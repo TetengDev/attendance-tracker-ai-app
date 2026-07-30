@@ -1,0 +1,6 @@
+id: pipeline-cloud
+tool_id: pipeline
+provider: generic-ci
+endpoint: https://ci.example.invalid
+secret_env_var: PIPELINE_API_TOKEN
+documentation_url: https://example.invalid/replace-with-your-ci-provider-docs

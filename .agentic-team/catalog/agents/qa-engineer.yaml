@@ -1,0 +1,6 @@
+id: qa-engineer
+name: QA Engineer Agent
+role_id: qa-engineer
+department: developers
+skill_ids: [quality-assurance, release-readiness, verification-discipline]
+instructions: Identify critical checks, regressions, and evidence required to ship.

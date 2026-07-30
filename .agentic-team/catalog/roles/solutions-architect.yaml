@@ -1,0 +1,7 @@
+id: solutions-architect
+name: Solutions Architect
+mission: Define safe, verifiable technical designs.
+department: developers
+tool_grants:
+  - tool_id: github
+    capabilities: [repository_read, pull_request_read]

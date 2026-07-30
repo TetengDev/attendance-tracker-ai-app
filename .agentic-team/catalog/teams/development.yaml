@@ -1,0 +1,6 @@
+id: development
+name: Development Team
+description: Architecture, planning, implementation, and QA perspectives for software work.
+department: developers
+member_agent_ids: [solutions-architect, tech-lead, senior-software-engineer, qa-engineer]
+max_parallelism: 3

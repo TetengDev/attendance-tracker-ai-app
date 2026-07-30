@@ -1,0 +1,7 @@
+id: code-review
+name: Code Review
+description: Review a proposed code change for correctness, maintainability, and test evidence.
+department: developers
+required_tools:
+  - tool_id: github
+    capabilities: [pull_request_read]

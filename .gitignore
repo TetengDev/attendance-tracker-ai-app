@@ -1,0 +1,49 @@
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+.vite/
+frontend/**/dist/
+*.tsbuildinfo
+
+# Models — vendored ONNX weights are large and license-restricted; fetched via infra/fetch_models.sh
+models/*.onnx
+models/**/*.onnx
+
+# Biometric + runtime data — must never reach the repo
+data/
+storage/
+uploads/
+enrollment_assets/
+fixtures/faces/
+*.y4m
+
+# Local infra
+.caddy/
+pgdata/
+*.sqlite3
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp

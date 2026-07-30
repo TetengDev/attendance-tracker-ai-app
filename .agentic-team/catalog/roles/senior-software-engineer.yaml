@@ -1,0 +1,11 @@
+id: senior-software-engineer
+name: Senior Software Engineer
+mission: Implement and review maintainable software changes.
+department: developers
+tool_grants:
+  - tool_id: github
+    capabilities: [repository_read, pull_request_read, pull_request_propose]
+  - tool_id: linear
+    capabilities: [issue_read]
+  - tool_id: pipeline
+    capabilities: [run_read]

@@ -1,0 +1,9 @@
+id: linear
+name: Linear
+description: Issue and user-story capability declarations.
+capabilities: [issue_read, issue_write, story_write]
+connection_id: linear-cloud
+claude_tools:
+  issue_read: [Read, Grep]
+  issue_write: [Write]
+  story_write: [Write]

@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "package": "agentic-team-customizer",
+  "team_id": "development",
+  "files": {
+    "catalog/connections/github-cloud.yaml": "c7e1f402bf92981b90c25e0237959deb7e7812fa3ff68605da138c0fe5dc4d1b",
+    "catalog/connections/linear-cloud.yaml": "47f3a2ea57a6c9f2bc7ac82c61f4f62d8c2cb04473341551d0054486c718ee74",
+    "catalog/connections/pipeline-cloud.yaml": "ced95efca01afaf5a969aad6438694b6fee2265e50e4db3383f67b401ebe270c",
+    "catalog/teams/development.yaml": "8dc85e5a2ad9af8a29fa8d2b8b09dbcc46e4e1fcc7d7a53dad8f7553d718c0e1",
+    "catalog/agents/qa-engineer.yaml": "72e8a4ccb9026eeff67bd87348951a4618d3786186e90c8bea912b55b8b1d062",
+    "catalog/agents/senior-software-engineer.yaml": "0a304a9a8ab4b8cfda39e6570ecd796fe8f1c9fe7e2852e1219bbe0a9967bf29",
+    "catalog/agents/solutions-architect.yaml": "62c07111eee23e7f0b21446b9bb4aa092d96fca734b95a6a19e594a09c4503ca",
+    "catalog/agents/tech-lead.yaml": "b6c76be2ec64fd064fb044be772fb7c296cef8742399b5bb9afdec4e81a9dd26",
+    "catalog/roles/qa-engineer.yaml": "b3158f4166eeddb9e3c098004a3a27c14c61960d43da298b16b720013b811cb6",
+    "catalog/roles/senior-software-engineer.yaml": "07a7cc0b246eb12ca7ed9af7290c2227b1b76abbe412fd844f0077c4bf50afbc",
+    "catalog/roles/solutions-architect.yaml": "0f0e144e8da8c16eb3c043e83338c535390ce2a427058f56d9e31763b0d7202d",
+    "catalog/roles/tech-lead.yaml": "f242d512696b9cd5795d1cdf4ea736641f2c95ebf9129a2d03c0a42274c1d6e5",
+    "catalog/skills/code-review.yaml": "16cbb6f8f8c364441540e0492353158865bf061a6dc16a97f0d820e222412ffb",
+    "catalog/skills/delivery-planning.yaml": "f9fd61dc63d6cd7ec1de68f230ec497792facd4f7542fb03307c9d6ba69e5b4d",
+    "catalog/skills/implementation.yaml": "ad98c4705279ffc0bd1669b9796b366a4a0e518542e338694e0b78ff5c84c5ee",
+    "catalog/skills/quality-assurance.yaml": "05213835a832274ceaa1d8c3b18faba1cc932f91a28a0a0eb42f1571a8b3da4f",
+    "catalog/skills/release-readiness.yaml": "9832730454a1e3133e782d1cc72be6363ddfbece5ddc736d5e031c326c8adfd6",
+    "catalog/skills/system-design.yaml": "3e8d8d71e75cd198e86abdf3c2e041d0446d95d651b536bba5a52ceb54031e06",
+    "catalog/skills/verification-discipline.yaml": "fe2b8dd3d5de804a3090c0d4537fa670e9e52af6d655115386f972293eb5e373",
+    "catalog/tools/github.yaml": "bee2dc87b524d02e12de105401d6449b112360585dc2a27b5b3c4fdc54dddb79",
+    "catalog/tools/linear.yaml": "76c94d94a091e78107248959c6125966f2646a1fedebd60a926c392a2e314a8c",
+    "catalog/tools/pipeline.yaml": "71e184ac78dc4851491370d96fcda30376d38b23602f6bac10dfe2a20e6d884a",
+    "catalog/departments/developers.yaml": "2faf2c6c012d0786d494c8bfad60fd2aa10d6ce8b9d721b7765593310fbc3fc8",
+    "skills/verification-discipline/SKILL.md": "f7d99895216831e794abfea2793c0c0fede0ccdb831133640ec29b31a123a919"
+  },
+  "claude_files": {
+    ".claude/agents/solutions-architect.md": "e3f3494ddc3567b2bd2e370a116934f17a4cbb6acd4d63170129dd1d2aa08c6b",
+    ".claude/agents/tech-lead.md": "3890755a73aa2aa5e2cc4bfa86faa6746e9cbc5e1280ffe31fcdadc9c7f54d5d",
+    ".claude/agents/senior-software-engineer.md": "4a8f5452f0d2fa8ed4f96b002b18ed3b69153e4f457b3931669088d4abe79ca2",
+    ".claude/agents/qa-engineer.md": "26756e4df64de3df262a56afe6ea61772a4e9278731dcc0f20f736e8bea51d0e",
+    ".claude/commands/development.md": "5a48eedbdee1264dcd8fe313f63e4a26b0f5d8957dbc98ea2f3a3617e0b3e963",
+    ".claude/skills/verification-discipline/SKILL.md": "f7d99895216831e794abfea2793c0c0fede0ccdb831133640ec29b31a123a919",
+    ".claude/settings.json": "9a4dfd5d627b6e426a8f2537571d830469f34c8be5006b6bd4cccb5adfe2ff85"
+  },
+  "packs": {}
+}

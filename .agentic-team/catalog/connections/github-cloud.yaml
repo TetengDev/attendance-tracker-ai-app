@@ -1,0 +1,6 @@
+id: github-cloud
+tool_id: github
+provider: github
+endpoint: https://api.github.com
+secret_env_var: GITHUB_TOKEN
+documentation_url: https://docs.github.com/rest

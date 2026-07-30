@@ -1,0 +1,7 @@
+id: system-design
+name: System Design
+description: Produce constraints, alternatives, and a recommended architecture.
+department: developers
+required_tools:
+  - tool_id: github
+    capabilities: [repository_read]

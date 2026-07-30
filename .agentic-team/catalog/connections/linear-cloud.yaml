@@ -1,0 +1,6 @@
+id: linear-cloud
+tool_id: linear
+provider: linear
+endpoint: https://api.linear.app
+secret_env_var: LINEAR_API_KEY
+documentation_url: https://developers.linear.app/docs/graphql/working-with-the-graphql-api

@@ -1,0 +1,7 @@
+id: implementation
+name: Implementation
+description: Plan a scoped code change with validation evidence.
+department: developers
+required_tools:
+  - tool_id: github
+    capabilities: [repository_read]

@@ -1,0 +1,7 @@
+id: verification-discipline
+name: Verification Discipline
+description: Verify work before reporting it complete.
+department: developers
+provider:
+  kind: authored
+  body_dir: skills/verification-discipline

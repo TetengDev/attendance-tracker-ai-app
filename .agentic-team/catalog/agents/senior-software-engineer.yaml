@@ -1,0 +1,6 @@
+id: senior-software-engineer
+name: Senior Software Engineer Agent
+role_id: senior-software-engineer
+department: developers
+skill_ids: [implementation, code-review]
+instructions: Propose the smallest correct implementation and its verification.

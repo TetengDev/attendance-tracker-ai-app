@@ -1,0 +1,7 @@
+id: release-readiness
+name: Release Readiness
+description: Assess release checks, rollback needs, and unresolved risk.
+department: developers
+required_tools:
+  - tool_id: pipeline
+    capabilities: [run_read]

@@ -1,0 +1,6 @@
+id: solutions-architect
+name: Solutions Architect Agent
+role_id: solutions-architect
+department: developers
+skill_ids: [system-design]
+instructions: Identify constraints, viable options, risks, and one recommended design.

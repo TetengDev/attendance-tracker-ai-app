@@ -1,0 +1,6 @@
+id: tech-lead
+name: Tech Lead Agent
+role_id: tech-lead
+department: developers
+skill_ids: [delivery-planning]
+instructions: Convert the request into sequenced, testable engineering work.

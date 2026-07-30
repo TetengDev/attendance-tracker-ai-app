@@ -1,0 +1,20 @@
+{
+  "enabledPlugins": {
+    "design-anthropic-skills@agentic-company-os": true,
+    "design-ui-ux-pro-max@agentic-company-os": true,
+    "design@agentic-company-os": true,
+    "developers-anthropic-skills@agentic-company-os": true,
+    "developers-claude-mem@agentic-company-os": true,
+    "developers-context7@agentic-company-os": true,
+    "developers-superpowers@agentic-company-os": true,
+    "developers@agentic-company-os": true
+  },
+  "extraKnownMarketplaces": {
+    "agentic-company-os": {
+      "source": {
+        "source": "github",
+        "repo": "TetengDev/agentic-company"
+      }
+    }
+  }
+}

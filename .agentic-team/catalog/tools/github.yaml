@@ -1,0 +1,9 @@
+id: github
+name: GitHub
+description: Source repository and pull-request capability declarations.
+capabilities: [repository_read, pull_request_read, pull_request_propose]
+connection_id: github-cloud
+claude_tools:
+  repository_read: [Read, Grep, Glob]
+  pull_request_read: [Read, Grep, Glob]
+  pull_request_propose: [Edit, Write]

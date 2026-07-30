@@ -1,0 +1,11 @@
+id: tech-lead
+name: Tech Lead
+mission: Break down delivery work and coordinate engineering execution.
+department: developers
+tool_grants:
+  - tool_id: github
+    capabilities: [repository_read, pull_request_read]
+  - tool_id: linear
+    capabilities: [issue_read, issue_write, story_write]
+  - tool_id: pipeline
+    capabilities: [run_read]

@@ -1,0 +1,8 @@
+id: pipeline
+name: Pipeline
+description: CI/CD visibility and proposal capability declarations.
+capabilities: [run_read, run_propose]
+connection_id: pipeline-cloud
+claude_tools:
+  run_read: [Read, Grep]
+  run_propose: [Write]
