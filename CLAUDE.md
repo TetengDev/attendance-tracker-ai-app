@@ -104,6 +104,7 @@ Known human-blocked items: TLS certs for LAN kiosks (`getUserMedia` needs a secu
 - Installed teams: `/development` (solutions-architect, tech-lead, senior-software-engineer, qa-engineer) · `/design` · `/security` (**use on anything touching biometrics, auth, or crypto**) · `/devops`.
 - Run `make check` before reporting work complete. If tests fail, say so with the output.
 - Every PR must be attached to its counterpart Linear issue/user story before review. If one PR covers multiple issues, attach the PR link to each issue and mention the covered issue keys in the PR body. Move issues to `In Review` when the PR opens, and only move them to `Done` after the PR is approved or merged.
+- Before a human review, run an independent PR-reviewer agent pass. Fix blocking or low-risk review findings directly on the PR branch before handing off. If a finding is valid but depends on future implementation, broader measurement, or materially larger scope, create a Linear bug/backlog item, attach the PR link, relate it to the current Linear issue/user story, and mention the deferral in a PR comment.
 - Atomic commits, one concern each. Never commit or push unless asked.
 
 ## Key Files Reference
