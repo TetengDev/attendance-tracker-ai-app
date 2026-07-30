@@ -544,7 +544,7 @@ Availability was entirely unaddressed. Restart cost is three model loads plus a 
 - **L2** — pipeline and API against the fake: cooldowns, limits, liveness branching, ambiguity, unknown-face lockout, WS protocol, event writing, resolution, notifications — zero images, perfect determinism.
 - **L3** — `@pytest.mark.models`, nightly. Embedding stability against checked-in golden `.npy` within `atol=1e-3` (catches onnxruntime upgrades and preprocessing drift, the failures that silently degrade accuracy without throwing). Accuracy regression `TAR@FAR=1e-3 ≥ baseline − 0.01`. **Liveness class-index assertion** (§2.2).
 
-**Fixtures:** synthetic 512-d vectors with controlled intra/inter-class structure for L1/L2 — the matcher needs no pixels. For L3, ~50–100 rights-cleared or synthetic images **outside the repo**; do not vendor LFW/CelebA/VGGFace2 (research-use-only or withdrawn, and checking real faces into a biometrics repo is what this app's own policy forbids).
+**Fixtures:** synthetic 512-d vectors with controlled intra/inter-class structure for L1/L2 — the matcher needs no pixels. For L3, real images are **fetched, never vendored** — see §9.1 for which corpora are actually usable and §9.2 for why their thresholds must not ship.
 
 **Initial tester.** The project owner supplies the first real face images and acts as tester zero. This unblocks the Phase 1 smoke path immediately — enroll, probe, confirm a match, confirm liveness separates a real face from a photo of it on a screen — long before the ~100-identity eval set exists.
 
@@ -553,7 +553,47 @@ Handling is not optional, because these are a real person's biometrics under the
 - Never attach a face image to a Linear issue, a PR, or a log.
 - The owner can revoke at any time: delete the directory and regenerate goldens from a replacement.
 
-**This does not substitute for the eval set.** One identity cannot produce a FAR/FRR curve — impostor rates need many identities. Tester zero proves the pipeline runs end to end; TEN-18 still needs ≥100 identities to set the threshold, and TEN-89 still needs ~20 volunteers to measure field accuracy.
+**This does not substitute for the eval set.** One identity cannot produce a FAR/FRR curve — impostor rates need many identities. Tester zero proves the pipeline runs end to end; TEN-18 still needs the corpus in §9.1, and TEN-89 still needs ~20 volunteers to measure field accuracy.
+
+**Tester zero needs at least two images, taken on different occasions.** Enrolling and probing the same file yields cosine ≈ 1.0 and proves nothing about recognition — only that the pipeline executes. A genuine pair requires a second capture with different lighting, angle, and day. Note also that a studio ID photo (plain background, even lighting, formal pose) is a *different domain* from a doorway capture, so a match between two ID photos is an optimistic result.
+
+### 9.1 Evaluation corpus
+
+**We are not training anything.** SCRFD, ArcFace `w600k_r50`, and MiniFASNet are pretrained and frozen. What the project needs is an **evaluation** corpus — many identities with **multiple images each**, so genuine and impostor pairs can both be formed and a FAR/FRR curve swept. Training data and evaluation data are different requirements, and most "face training datasets" are the wrong shape here: no identity labels, or one image per identity.
+
+**Most of the famous face datasets are gone.** Verified July 2026:
+
+| Dataset | Status |
+|---|---|
+| **MS-Celeb-1M** | **Withdrawn 2019** after it was shown to contain journalists and activists, not just public figures. Third-party mirrors persist; using them is the exposed path, not the safe one. |
+| **VGGFace2** | **Withdrawn.** Oxford's page states the download links are no longer available. No sanctioned mirror. |
+| **MegaFace** | **Decommissioned 2020** — built from Flickr images whose NonCommercial terms the dataset violated. |
+| **CASIA-WebFace** | Unavailable from origin. |
+| **IJB-A / IJB-B / IJB-C** | **NIST discontinued distribution, March 2023.** |
+| **CelebA** | Non-commercial, and the identity labels — the only part that matters here — require a separate application. |
+
+`w600k_r50` is trained on WebFace600K, and MS1MV2/V3 and Glint360K are MS-Celeb derivatives, so the model carries the same provenance and non-commercial constraints already flagged in §0 #7. The dataset question and the model-licensing question are the same question.
+
+**Tiered corpus, in priority order:**
+
+1. **NIST SD32 MEDS-II — primary.** The standout, and the one most easily missed. NIST open licence (US Government work, not subject to domestic copyright), so **no non-commercial restriction**; registration form only. Multiple encounters per subject is the corpus's entire design — exactly the "N images per identity" requirement. Critically, these are **frontal, cooperative, controlled-lighting captures, far closer to a kiosk than celebrity photos are.** Subjects are deceased, removing the live-consent objection. Limitations: hundreds of subjects rather than thousands, and they are booking photos, which carries optics if the benchmark is ever discussed publicly.
+2. **DigiFace-1M — supplementary, non-commercial only.** Ideal structure (10K identities × **72 images each**, plus 100K × 5) and the one genuinely provenance-clean synthetic set, being rendered from 3D scans rather than learned from scraped photos. But its **R-UDA licence bars commercial use outright**, so it cannot be primary unless the commercial question settles as "no." Photorealism is modest, so absolute FAR/FRR on it will not match real faces — relative regression signal only.
+3. **LFW — nightly regression tripwire only, never a threshold source.** No formal licence (scraped copyrighted news photographs, no subject consent), and its own maintainers publish a disclaimer that LFW performance should not be used to conclude an algorithm is suitable for any commercial purpose. It is also **saturated** — `w600k_r50` scores ~99.85% — so it detects "preprocessing broke" and nothing finer. 1,680 of its 5,749 identities have 2+ images.
+4. **SFHQ-T2I — impostor gallery and detector smoke tests.** MIT licensed and encumbrance-free, but it has **no identity labels and no multiple images per identity**, so it cannot form genuine pairs and cannot yield an FRR curve. Useful for padding a gallery to N=5000 for TEN-18's FAR extrapolation.
+5. **An in-domain set captured on the real kiosk — the actual threshold source.** Unavoidable; see §9.2.
+
+**Rule: fetch, never vendor.** `infra/fetch_evalsets.sh` downloads into gitignored `fixtures/faces/`, verifies checksums, and records each dataset's licence in `fixtures/faces/LICENSES.md`. Nothing containing a real face ever enters git — the same rule as tester zero, for the same reason.
+
+### 9.2 Why a public-benchmark threshold must not ship
+
+**A threshold tuned on LFW will sit too low for this kiosk, and the error runs in the dangerous direction.** Moving from uncontrolled celebrity photos to cooperative kiosk captures raises genuine-pair similarity far more than it raises impostor similarity. The realised FAR at an LFW-derived threshold will therefore be **worse** than LFW predicted, while FRR looks flatteringly good. For an attendance system the failure that matters is one person clocking in another — precisely the one that gets under-estimated.
+
+Three effects compound it:
+- **NIST sets thresholds per dataset**, because score distributions differ between corpora, and ranks corpus difficulty explicitly — visa photos easiest, then mugshots, then border, then "wild." LFW sits in the hardest bucket; a kiosk sits in the easiest. NIST also deliberately avoids public benchmarks for operational estimates.
+- **Operating-point rankings invert.** Models that lead on full ROC-AUC can be materially worse at FMR=10⁻³ — the point that actually ships. Aggregate benchmark performance says little about the tail you operate in.
+- **1:1 protocols do not model 1:N.** LFW's balanced 6,000-pair protocol says nothing about FAR compounding with gallery size, which §3.4 accounts for and TEN-18 extrapolates.
+
+**Therefore:** derive a *starting* threshold from MEDS-II (best domain match) or DigiFace, then re-sweep on ~50–100 consented enrolment and probe images captured **on the real hardware in the real lighting**. A few hundred in-domain images beat millions of out-of-domain ones. **Freeze `(model hash, preprocessing path, threshold, metric definition)` as one release unit** and re-derive on any model or camera change — never carry a threshold across model versions.
 
 **Determinism traps:** assert on `.npy`, never re-decoded JPEG; pin one resize path (`cv2` ≠ `PIL` at the same nominal interpolation); `intra_op_num_threads=1` in tests only; `time-machine` with **at least one non-UTC location timezone** — a UTC-only suite will not catch timezone bugs.
 
@@ -623,8 +663,10 @@ Retaining encrypted originals is justified entirely by "swapping the model is a 
 
 **Phase 1 gate (blocking):**
 ```bash
-uv run python -m app.face.bench    --iterations 100
-uv run python -m app.face.evaluate --enroll fixtures/enroll --probe fixtures/probe --extrapolate-to 5000
+infra/fetch_evalsets.sh                     # into gitignored fixtures/faces/, checksums + LICENSES.md
+uv run python -m app.face.smoke     --person "tester-zero"          # pipeline runs end to end
+uv run python -m app.face.bench     --iterations 100
+uv run python -m app.face.evaluate  --corpus meds2 --enroll 3 --probe rest --extrapolate-to 5000
 uv run python -m app.face.liveness_check --live fixtures/live --spoof fixtures/spoof
 ```
 Plus the hallway test results in `docs/phase1-results.md`, and the `buffalo_l` vs Apache-2.0 accuracy delta recorded (expect a large CFP-FP gap, §0 #7).
