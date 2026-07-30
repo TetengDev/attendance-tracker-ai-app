@@ -1,10 +1,9 @@
 import numpy as np
-import pytest
 
 from backend.app.face.protocol import FakeFaceEngine
 
 
-def test_fake_faceengine_detect_and_embed():
+def test_fake_faceengine_detect_and_embed() -> None:
     engine = FakeFaceEngine()
     engine.next_result(person="alice", score=0.95, liveness=0.98)
 
@@ -24,7 +23,7 @@ def test_fake_faceengine_detect_and_embed():
     assert isinstance(lv.passed, bool)
 
 
-def test_queue_and_reset():
+def test_queue_and_reset() -> None:
     engine = FakeFaceEngine()
     engine.queue_results([
         {"person": "bob", "score": 0.9, "liveness": 0.5, "n_faces": 1},

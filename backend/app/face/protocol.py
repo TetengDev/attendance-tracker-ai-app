@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, Tuple, List, Optional, Deque
-import numpy as np
 from collections import deque
-import hashlib
+from dataclasses import dataclass
+from typing import Any, Protocol
 
-Bbox = Tuple[int, int, int, int]  # x1, y1, x2, y2
+import numpy as np
+
+Bbox = tuple[int, int, int, int]  # x1, y1, x2, y2
 Landmarks = np.ndarray  # (5, 2) float32
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -17,11 +18,13 @@ class Detection:
     blur_var: float
     brightness: float
 
+
 @dataclass(frozen=True)
 class LivenessResult:
-    live_score: float
-    per_model: Tuple[float, ...]
-    passed: bool
+    live_score: float  # combined[1] after summing both softmaxes / 2
+    per_model: tuple[float, ...]
+    passed: bool  # live_score >= liveness.threshold
+
 
 @dataclass(frozen=True)
 class Embedding:
@@ -31,14 +34,15 @@ class Embedding:
 
 
 class FaceEngine(Protocol):
-    """Protocol representing the face engine contract used by the app.
+    """Face engine contract.
 
-    Implementations must accept BGR uint8 HWC images at every boundary.
+    All image boundaries are BGR uint8 HWC. Implementations must not require
+    RGB or float input before the model-specific preprocessing step.
     """
 
-    def detect(self, bgr: np.ndarray) -> List[Detection]: ...
+    def detect(self, bgr: np.ndarray) -> list[Detection]: ...
 
-    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...  # -> (112,112,3) BGR
+    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...
 
     def liveness(self, bgr: np.ndarray, bbox: Bbox) -> LivenessResult: ...
 
@@ -48,109 +52,133 @@ class FaceEngine(Protocol):
     def model_version(self) -> str: ...
 
 
-class FakeFaceEngine(FaceEngine):
-    """A deterministic, test-friendly fake FaceEngine used in unit tests.
+@dataclass(frozen=True)
+class _FakeResult:
+    person: str | None = None
+    score: float = 0.9
+    liveness: float = 0.95
+    n_faces: int = 1
+    det_score: float = 0.9
 
-    Usage patterns (supported):
-    - next_result(person=str|None, score=float, liveness=float, n_faces=int)
-      queues a single synthetic detection result that subsequent detect() calls will return.
-    - queue_results(results: list[dict]) queues multiple results.
-    - reset() clears queued results.
 
-    Each queued result is a dict with optional keys: person (str|None), score (float),
-    liveness (float), n_faces (int), det_score (float).
-    """
+class FakeFaceEngine:
+    """Deterministic FaceEngine for fast tests that do not load ONNX models."""
 
-    def __init__(self) -> None:
-        self._q: Deque[dict] = deque()
-        self._default_model_name = "fake-resnet"
-        self._default_model_version = "0.0.0"
+    def __init__(self, *, liveness_threshold: float = 0.75) -> None:
+        self._queue: deque[_FakeResult] = deque()
+        self._active: _FakeResult | None = None
+        self._liveness_threshold = liveness_threshold
+        self._model_name = "fake-face-engine"
+        self._model_version = "fake-v1"
 
-    def next_result(self, *, person: Optional[str] = None, score: float = 0.9,
-                    liveness: float = 0.95, n_faces: int = 1,
-                    det_score: float = 0.9) -> None:
-        self._q.append({
-            "person": person,
-            "score": float(score),
-            "liveness": float(liveness),
-            "n_faces": int(n_faces),
-            "det_score": float(det_score),
-        })
+    def next_result(
+        self,
+        *,
+        person: str | None = None,
+        score: float = 0.9,
+        liveness: float = 0.95,
+        n_faces: int = 1,
+        det_score: float = 0.9,
+    ) -> None:
+        self._queue.append(
+            _FakeResult(
+                person=person,
+                score=float(score),
+                liveness=float(liveness),
+                n_faces=int(n_faces),
+                det_score=float(det_score),
+            )
+        )
 
-    def queue_results(self, results: List[dict]) -> None:
-        for r in results:
-            # shallow validation
-            r2 = dict(r)
-            r2.setdefault("person", None)
-            r2.setdefault("score", 0.9)
-            r2.setdefault("liveness", 0.95)
-            r2.setdefault("n_faces", 1)
-            r2.setdefault("det_score", 0.9)
-            self._q.append(r2)
+    def queue_results(self, results: list[dict[str, Any]]) -> None:
+        for result in results:
+            self.next_result(
+                person=result.get("person"),
+                score=result.get("score", 0.9),
+                liveness=result.get("liveness", 0.95),
+                n_faces=result.get("n_faces", 1),
+                det_score=result.get("det_score", 0.9),
+            )
 
     def reset(self) -> None:
-        self._q.clear()
+        self._queue.clear()
+        self._active = None
 
-    # Protocol methods
-    def detect(self, bgr: np.ndarray) -> List[Detection]:
-        """Return a list of synthetic detections. If the queue is empty, returns []."""
-        if not self._q:
+    def detect(self, bgr: np.ndarray) -> list[Detection]:
+        self._assert_bgr_uint8_hwc(bgr)
+        self._active = self._queue.popleft() if self._queue else _FakeResult(n_faces=0)
+        if self._active.n_faces <= 0:
             return []
-        item = self._q.popleft()
-        n = int(item.get("n_faces", 1))
-        detections: List[Detection] = []
-        h, w = bgr.shape[0], bgr.shape[1]
-        for i in range(n):
-            # make a simple centered bbox scaled by i
-            pad = 20 + i * 5
-            x1 = pad
-            y1 = pad
-            x2 = max(1, w - pad)
-            y2 = max(1, h - pad)
-            lm = np.zeros((5, 2), dtype=np.float32)
-            det = Detection(
-                bbox=(x1, y1, x2, y2),
-                det_score=float(item.get("det_score", 0.9)),
-                landmarks=lm,
-                blur_var=100.0,
-                brightness=128.0,
+
+        height, width = bgr.shape[:2]
+        detections: list[Detection] = []
+        for index in range(self._active.n_faces):
+            inset = min(20 + index * 8, max(width, height) // 4)
+            x1 = min(inset, max(width - 2, 0))
+            y1 = min(inset, max(height - 2, 0))
+            x2 = max(x1 + 1, width - inset)
+            y2 = max(y1 + 1, height - inset)
+            landmarks = np.array(
+                [
+                    [x1 + (x2 - x1) * 0.30, y1 + (y2 - y1) * 0.35],
+                    [x1 + (x2 - x1) * 0.70, y1 + (y2 - y1) * 0.35],
+                    [x1 + (x2 - x1) * 0.50, y1 + (y2 - y1) * 0.52],
+                    [x1 + (x2 - x1) * 0.35, y1 + (y2 - y1) * 0.72],
+                    [x1 + (x2 - x1) * 0.65, y1 + (y2 - y1) * 0.72],
+                ],
+                dtype=np.float32,
             )
-            detections.append(det)
+            detections.append(
+                Detection(
+                    bbox=(x1, y1, x2, y2),
+                    det_score=self._active.det_score,
+                    landmarks=landmarks,
+                    blur_var=100.0,
+                    brightness=128.0,
+                )
+            )
         return detections
 
     def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray:
-        # Return a deterministic zeroed 112x112x3 uint8 crop to satisfy downstream callers
-        return np.zeros((112, 112, 3), dtype=np.uint8)
+        self._assert_bgr_uint8_hwc(bgr)
+        if lm.shape != (5, 2):
+            raise ValueError("landmarks must have shape (5, 2)")
+
+        seed = self._seed_for_active_person()
+        rng = np.random.default_rng(seed)
+        return rng.integers(0, 256, size=(112, 112, 3), dtype=np.uint8)
 
     def liveness(self, bgr: np.ndarray, bbox: Bbox) -> LivenessResult:
-        # If a queued item is available, use its liveness; otherwise default to 0.95
-        # (Note: detect() already pops one queued item. This function is allowed to be
-        #  called independently in tests, so peek if queue has items.)
-        l = 0.95
-        if self._q:
-            # peek without consuming fully
-            itm = self._q[0]
-            l = float(itm.get("liveness", 0.95))
-        passed = bool(l >= 0.5)
-        return LivenessResult(live_score=float(l), per_model=(float(l),), passed=passed)
+        self._assert_bgr_uint8_hwc(bgr)
+        if len(bbox) != 4:
+            raise ValueError("bbox must contain x1, y1, x2, y2")
+
+        live_score = self._active.liveness if self._active is not None else 0.95
+        return LivenessResult(
+            live_score=float(live_score),
+            per_model=(float(live_score), float(live_score)),
+            passed=bool(live_score >= self._liveness_threshold),
+        )
 
     def embed(self, aligned: np.ndarray) -> Embedding:
-        # Produce a deterministic embedding by hashing the aligned image contents.
-        # If the buffer is constant (zeros), fallback to a fixed pseudorandom vector.
-        raw = aligned.tobytes()
-        h = hashlib.sha256(raw).digest()
-        seed = int.from_bytes(h[:8], "big")
+        self._assert_bgr_uint8_hwc(aligned)
+        seed = self._seed_for_active_person()
         rng = np.random.default_rng(seed)
-        vec = rng.standard_normal(512).astype(np.float32)
-        # L2-normalize
-        norm = np.linalg.norm(vec)
-        if norm == 0:
-            vec[0] = 1.0
-            norm = np.linalg.norm(vec)
-        vec = vec / norm
-        return Embedding(vector=vec, model_name=self._default_model_name,
-                         model_version=self._default_model_version)
+        vector = rng.standard_normal(512).astype(np.float32)
+        vector /= np.linalg.norm(vector)
+        return Embedding(vector=vector, model_name=self._model_name, model_version=self._model_version)
 
     @property
     def model_version(self) -> str:
-        return self._default_model_version
+        return self._model_version
+
+    def _seed_for_active_person(self) -> int:
+        person = self._active.person if self._active is not None else None
+        if person is None:
+            return 0
+        return sum((index + 1) * ord(char) for index, char in enumerate(person))
+
+    @staticmethod
+    def _assert_bgr_uint8_hwc(image: np.ndarray) -> None:
+        if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError("image must be BGR uint8 HWC")
