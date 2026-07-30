@@ -1,0 +1,27 @@
+# docs/ownership.toml — maps issue keys to path globs for CI ownership checks
+
+[[ownership]]
+issue = "phase-0.5-contracts"
+paths = [
+  "backend/app/settings/**",
+  "backend/app/face/**",
+  "backend/app/api/**",
+  "docs/**",
+  ".github/**",
+]
+
+[[ownership]]
+issue = "implement-face-protocol"
+paths = ["backend/app/face/**"]
+
+[[ownership]]
+issue = "implement-settings-schema"
+paths = ["backend/app/settings/**"]
+
+[[ownership]]
+issue = "implement-ws-schema"
+paths = ["backend/app/api/**"]
+
+[[ownership]]
+issue = "implement-error-taxonomy"
+paths = ["backend/app/errors.py"]
