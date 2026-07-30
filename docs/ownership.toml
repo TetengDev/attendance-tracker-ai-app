@@ -23,6 +23,14 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-6"
+paths = [
+  "infra/compose.yml",
+  "infra/postgres/init.sql",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
