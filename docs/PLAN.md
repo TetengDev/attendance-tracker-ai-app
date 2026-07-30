@@ -19,6 +19,9 @@ Revision 1 was approved and seeded as 78 Linear issues (TEN-5…TEN-82). It was 
 | **Jurisdiction** | **Philippines / non-EU.** RA 10173 (Data Privacy Act) is the governing law. EU support is a backlog item, not v1 (§7.4). |
 | v1 features | Passive liveness · shifts & late detection · multi-device/location · notifications. |
 | Admin config | Branding, kiosk text, attendance rules as settings rows, live-applied without redeploy. |
+| **Client** | **Installable PWA** — phones (add to home screen) and wall-mounted tablets run the same bundle. No app stores, no native wrapper. |
+| **Device mobility** | **Roaming.** A phone moves between locations, so location is declared per **scan session**, never a fixed property of the device (§6.5). |
+| **TLS** | **Real domain + Let's Encrypt via DNS-01**, resolving to the LAN IP. Not an internal CA — see §6.5. |
 
 ### Verified environment
 
@@ -95,6 +98,14 @@ Everything in this section is a specification to **copy verbatim**, not a descri
 | `scan.unknown_lockout_seconds` | int | `60` | 0–3600 | O·D |
 | `scan.min_inter_location_seconds` | int | `120` | 0–7200 | O |
 | `scan.max_offline_backdate_minutes` | int | `240` | 0–1440 | O |
+| `session.require_operator` | bool | `true` | roaming devices | O |
+| `session.max_duration_minutes` | int | `240` | 5–1440 | O·L |
+| `session.idle_timeout_minutes` | int | `20` | 1–240 | O·L |
+| `session.require_geofence` | bool | `false` | | O·L |
+| `session.geofence_radius_m` | int | `150` | 25–5000 | O·L |
+| `kiosk.camera_facing` | enum | `user` | `user`\|`environment` | O·D |
+| `kiosk.scan_mode` | enum | `continuous` | `continuous`\|`tap_to_scan` | O·L·D |
+| `kiosk.low_battery_pct` | int | `15` | 0–50 | O |
 | `kiosk.gate.min_bbox_area_pct` | float | `8.0` | 1–50 | O·D |
 | `kiosk.gate.min_interocular_px` | int | `90` | 30–300 | O·D |
 | `kiosk.gate.max_center_offset_pct` | float | `20.0` | 5–50 | O·D |
@@ -319,6 +330,8 @@ Bands per `face.*` settings: accept at `top1 ≥ threshold` **and** `top1 − to
 
 **[FIX-B4] Impossible-travel check**, independent of cooldown. `cooldown_scope = location` by design lets one person clear both cooldowns at two sites in the same second — which puts them in two buildings on the **muster/fire roll**, a safety-critical report. One Redis key `scan:last:{person}` → `(location_id, ts)` set atomically with the cooldown; a different location within `scan.min_inter_location_seconds` emits `LOCATION_CONFLICT` and flags the event.
 
+> **Roaming caveat.** This check assumes the reported location is trustworthy, which a roaming phone's is not — a stale session would flag every legitimate scan as fraud. Every event therefore carries **`location_source ∈ {device_fixed, session_declared, geofence}`**, and the check **only fires when both events have `location_source = device_fixed`**. Conflicts involving a roaming device are recorded as `location_unverified` on the Exception report rather than denied. See §6.5.
+
 **Authority order** *(§0/[FIX-B5])*: the Redis cooldown is the **fast path**; the DB `idempotency_key` unique constraint plus a recent-event query is the **truth**. Revision 1 made attendance integrity a function of Redis memory pressure.
 
 ### 3.5 [FIX-B2] Gallery consistency
@@ -343,7 +356,7 @@ Timestamps `timestamptz` UTC. UUID PKs except append tables (bigint identity). H
 
 **Biometrics** — `enrollment_assets` (encrypted originals, `capture_pose`, quality scores) · `face_embeddings` (`vector` bytea AES-GCM, `model_name`/`model_version`, `is_active`) · `consents` (type, granted_by self/guardian + relationship, method, `policy_version`, IP, revocation).
 
-**Devices** — `locations` (**IANA `timezone` required**) · `devices` (direction, `token_hash` + prefix, pairing code, `allowed_cidrs`, `settings_override`) · `device_heartbeats` (7 days; drives the offline-kiosk alert).
+**Devices** — `locations` (**IANA `timezone` required**, plus `latitude`/`longitude` for optional geofencing) · `devices` (**`mode ∈ {fixed, roaming}`**, `location_id` **nullable when roaming**, direction, `token_hash` + prefix, pairing code, `allowed_cidrs`, `settings_override`, `form_factor`) · `device_heartbeats` (7 days; adds `battery_pct`, `clock_skew_ms`) · **`scan_sessions`** (§6.5).
 
 **Scheduling** — `shifts` · `schedules` · `schedule_rules` · `schedule_assignments` (**person > group > location > org**, `priority` breaks ties) · `calendar_days` · `person_exceptions`.
 
@@ -430,6 +443,45 @@ API surface is unchanged from revision 1 except: `attendance/records` gains `?as
 
 ---
 
+## 6.5 Mobile PWA and roaming devices
+
+The client is an **installable PWA**. A phone and a wall-mounted tablet run the same bundle; "install" is the browser's add-to-home-screen prompt, giving an icon, splash screen, and fullscreen. No app stores, no native wrapper, no review process, and updates ship instantly.
+
+### Scan sessions — location is declared, not assumed
+
+A roaming phone breaks the assumption that a device's location is fixed and trustworthy. Location moves onto a **session**:
+
+**`scan_sessions`** — `id`, `device_id`, `location_id`, `operator_admin_id` (nullable for fixed devices), `location_source` (`device_fixed|session_declared|geofence`), `started_at`, `ended_at`, `last_activity_at`, `start_lat`/`start_lng`/`gps_accuracy_m`, `scan_count`, `end_reason` (`explicit|idle_timeout|max_duration|token_revoked`).
+
+- **Fixed devices** open an implicit permanent session at their assigned location — behaviour is unchanged from the current design.
+- **Roaming devices** must open a session before scanning: pick a location, optionally confirm by geofence, and — when `session.require_operator` — authenticate a human. Every event carries `session_id` and `location_source`.
+- Sessions auto-close on `session.idle_timeout_minutes` or `session.max_duration_minutes`, so a phone left in a bag does not keep attributing scans to a room nobody is in.
+
+**Operator accountability is new.** A wall kiosk has no human behind it, so a device token was sufficient. A roaming phone is carried by someone, and "who took this attendance" is a question a school will ask. Roaming sessions therefore require both the **device token and an operator login**, and the operator lands on the event and in the audit log. This also gives the natural revocation story: a lost phone is revoked at the device *and* the operator's sessions are killed.
+
+> **Tension worth naming.** Roaming phones make classroom attendance the obvious use case, and classroom attendance is inherently **per-period** — while the locked decision is per-day records. That decision stands, and the natural key `(person, date, shift, period_label)` already accommodates periods as data (§2.5). But expect the per-period case to arrive sooner than the plan assumes.
+
+### What changes for a phone
+
+| Concern | Handling |
+|---|---|
+| Camera | `facingMode` from `kiosk.camera_facing` (default front); explicit camera picker; handle orientation change without dropping the stream |
+| Battery / thermal | Continuous camera on a phone drains fast and throttles. `kiosk.scan_mode = tap_to_scan` is the roaming default; stop the stream when the session is idle or the app is backgrounded; surface `battery_pct` on the device health strip and warn below `kiosk.low_battery_pct` |
+| Offline | Far more important than for a wired kiosk — walking between buildings drops connectivity routinely. The IndexedDB queue and `monotonic_offset_ms` backdating (§3.2) are what make this correct, and they already exist |
+| **iOS storage eviction** | Safari can evict PWA storage under pressure, which would silently drop queued offline scans. Request persistent storage, surface queue depth in the UI, and **warn the operator before a session ends with unsent events** |
+| Screen | Responsive down to ~375 px; the kiosk result card is currently designed for a large mounted display |
+| Wake Lock | Already planned; matters more on a phone that aggressively sleeps |
+
+### TLS: real domain, not an internal CA
+
+The revision-2 plan used Caddy with an internal CA. **That does not survive contact with phones.** Trusting a private root on iOS means installing a configuration profile *and* separately enabling full trust in Settings → General → About → Certificate Trust Settings — per device, repeated after every reset, on hardware the admin may not own. It is a recurring support burden that will be blamed on the app.
+
+Instead: a **real domain with a Let's Encrypt certificate issued via the DNS-01 challenge**, with an A record pointing at the server's LAN IP. DNS-01 needs no inbound reachability, so the server stays entirely LAN-only while every phone trusts it with **zero configuration**. Caddy automates this natively with a DNS-provider plugin. The only requirements are a domain and API credentials for its DNS provider.
+
+Fallback if a domain is genuinely unavailable: keep the internal CA, but scope it to devices the organization owns and provisions, and document the per-platform trust steps in the kiosk runbook.
+
+---
+
 ## 7. Privacy & security
 
 ### 7.1 What is stored
@@ -493,6 +545,15 @@ Availability was entirely unaddressed. Restart cost is three model loads plus a 
 - **L3** — `@pytest.mark.models`, nightly. Embedding stability against checked-in golden `.npy` within `atol=1e-3` (catches onnxruntime upgrades and preprocessing drift, the failures that silently degrade accuracy without throwing). Accuracy regression `TAR@FAR=1e-3 ≥ baseline − 0.01`. **Liveness class-index assertion** (§2.2).
 
 **Fixtures:** synthetic 512-d vectors with controlled intra/inter-class structure for L1/L2 — the matcher needs no pixels. For L3, ~50–100 rights-cleared or synthetic images **outside the repo**; do not vendor LFW/CelebA/VGGFace2 (research-use-only or withdrawn, and checking real faces into a biometrics repo is what this app's own policy forbids).
+
+**Initial tester.** The project owner supplies the first real face images and acts as tester zero. This unblocks the Phase 1 smoke path immediately — enroll, probe, confirm a match, confirm liveness separates a real face from a photo of it on a screen — long before the ~100-identity eval set exists.
+
+Handling is not optional, because these are a real person's biometrics under the same rules the app enforces on its users:
+- Images live in `fixtures/faces/`, which is **gitignored**. Only the derived **golden `.npy` embedding** is committed — it is the actual test assertion, it is tiny, and a stored vector is never re-derivable into a repo-visible face.
+- Never attach a face image to a Linear issue, a PR, or a log.
+- The owner can revoke at any time: delete the directory and regenerate goldens from a replacement.
+
+**This does not substitute for the eval set.** One identity cannot produce a FAR/FRR curve — impostor rates need many identities. Tester zero proves the pipeline runs end to end; TEN-18 still needs ≥100 identities to set the threshold, and TEN-89 still needs ~20 volunteers to measure field accuracy.
 
 **Determinism traps:** assert on `.npy`, never re-decoded JPEG; pin one resize path (`cv2` ≠ `PIL` at the same nominal interpolation); `intra_op_num_threads=1` in tests only; `time-machine` with **at least one non-UTC location timezone** — a UTC-only suite will not catch timezone bugs.
 

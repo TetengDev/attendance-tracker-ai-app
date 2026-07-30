@@ -4,7 +4,7 @@
 
 Self-hosted face-recognition attendance system for schools, offices, and similar establishments. A person walks up to a kiosk, the camera identifies them in under half a second, and attendance is logged and classified automatically (on-time / late / early-out / absent). Admins enroll faces, configure branding and attendance rules without a redeploy, and export reports.
 
-Single organization, single tenant — many kiosk devices across many locations. Face recognition runs **fully offline on CPU**; no biometric data leaves the premises. **Governing jurisdiction: Philippines (RA 10173, Data Privacy Act).**
+Single organization, single tenant — many devices across many locations. The client is an **installable PWA**: phones (add to home screen, phone camera) and wall-mounted tablets run the same bundle. **Devices roam** — a phone moves between locations, so location is declared per scan session, never assumed from the device. Face recognition runs **fully offline on CPU**; no biometric data leaves the premises. **Governing jurisdiction: Philippines (RA 10173, Data Privacy Act).**
 
 **Tech stack:** FastAPI (Python 3.13) · Postgres 17 · Redis 7 · ARQ behind a `JobQueue` protocol · React 19 + Vite 8 + TS · ONNX Runtime (SCRFD + ArcFace + MiniFASNet) · Docker Compose + Caddy
 **Environment:** dev `https://localhost` (Caddy internal CA) · prod: self-hosted on the customer's LAN
@@ -24,6 +24,8 @@ Single organization, single tenant — many kiosk devices across many locations.
 - **Face matching is in-process NumPy brute force.** Exact by construction, and the only approach compatible with encrypted embeddings. **pgvector is not used** — encrypted columns are opaque to its operators, so it would have been an extension doing nothing reachable.
 - **Attendance is a four-table split** — `attendance_events` (raw, immutable, append-only) → `expected_attendance` (materialized "what should have happened") → `attendance_records` (derived, rebuildable) + `attendance_overrides` (separate table, so records are genuinely disposable).
 - **Two scan processes** behind a shared queue, with the model-free API on separate workers. One process means every deploy or OOM is a site-wide outage during the morning rush.
+- **Location comes from a `scan_session`, not the device.** Fixed devices hold an implicit permanent session; roaming phones must open one (pick a location, optionally geofence, authenticate an operator). Every event carries `session_id` and `location_source`.
+- **TLS is a real domain + Let's Encrypt DNS-01** pointing at the LAN IP — not an internal CA. Phones cannot practically be made to trust a private root (iOS needs a config profile plus a separate manual full-trust toggle, per device, after every reset). DNS-01 needs no inbound reachability, so the server stays LAN-only.
 - **Settings are data, not code.** Scoped `device > location > org > code default`, Redis-cached, live-applied in under a second.
 - **`FaceEngine` and `JobQueue` are Protocols** with implementations behind config — the licensing hedge and the ARQ-is-maintenance-only hedge respectively.
 
@@ -40,7 +42,8 @@ Single organization, single tenant — many kiosk devices across many locations.
 - **NEVER write a `face_embeddings` row without an active consent** at the current `policy_version`.
 - **NEVER hardcode a model path, threshold, or preprocessing constant at a call site.** Every tunable has a key in `SETTINGS_SCHEMA` (`docs/PLAN.md` §2.1). `buffalo_l` weights are **non-commercial research only**.
 - **NEVER download models at runtime.** Vendor into `models/` with checksums.
-- **NEVER commit `.env`, model weights, or any real face image.** Do not vendor LFW/CelebA/VGGFace2.
+- **NEVER commit `.env`, model weights, or any real face image.** Do not vendor LFW/CelebA/VGGFace2. Test faces live in gitignored `fixtures/faces/`; only the derived golden `.npy` is committed. Never attach a face image to a Linear issue, a PR, or a log.
+- **NEVER run the impossible-travel check against a roaming device's reported location.** It only fires when both events have `location_source = device_fixed`; otherwise a stale session flags every legitimate scan as fraud. Roaming conflicts are recorded as `location_unverified`, never denied.
 - **NEVER build emotion, mood, or engagement inference.** Prohibited outright in workplaces and schools under EU AI Act Art. 5(1)(f), and out of scope regardless of jurisdiction.
 - **ALWAYS store timestamps as `timestamptz` in UTC**, and keep the three event times distinct: `client_captured_at` (untrusted), `server_received_at` (authoritative), `occurred_at` (derived).
 - **ALWAYS enforce RBAC scoping in the query layer, not the UI.**
