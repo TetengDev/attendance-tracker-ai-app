@@ -6,23 +6,35 @@ PR is covered by at least one ownership.paths glob. Exits 0 on success, 1 on
 failure. Intended to run in CI (checkout at the PR commit).
 """
 import os
-import sys
 import subprocess
+import sys
 import tomllib
 from fnmatch import fnmatch
 
-BASE = os.environ.get("BASE","origin/main")
+BASE = os.environ.get("BASE", "origin/main")
 
-def changed_files():
-    # Compare against BASE; assume repo is checked out
+
+def changed_files() -> list[str]:
+    files: set[str] = set()
+
+    # Compare committed PR changes against BASE; assume repo is checked out.
     try:
         out = subprocess.check_output(["git", "diff", "--name-only", f"{BASE}...HEAD"]).decode()
     except subprocess.CalledProcessError:
         out = subprocess.check_output(["git", "diff", "--name-only"]).decode()
-    return [l.strip() for l in out.splitlines() if l.strip()]
+    files.update(line.strip() for line in out.splitlines() if line.strip())
+
+    # Include local uncommitted changes for pre-commit agent verification.
+    out = subprocess.check_output(["git", "diff", "--name-only"]).decode()
+    files.update(line.strip() for line in out.splitlines() if line.strip())
+
+    out = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"]).decode()
+    files.update(line.strip() for line in out.splitlines() if line.strip())
+
+    return sorted(files)
 
 
-def load_ownership(path="ownership.toml"):
+def load_ownership(path: str = "docs/ownership.toml") -> list[tuple[str | None, list[str]]]:
     with open(path, "rb") as f:
         doc = tomllib.load(f)
     lst = doc.get("ownership", [])
@@ -32,7 +44,7 @@ def load_ownership(path="ownership.toml"):
     return entries
 
 
-def main():
+def main() -> int:
     files = changed_files()
     if not files:
         print("No changed files detected — passing ownership check.")

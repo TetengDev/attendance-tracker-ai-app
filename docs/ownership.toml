@@ -6,7 +6,16 @@ paths = [
   "backend/app/settings/**",
   "backend/app/face/**",
   "backend/app/api/**",
+  "backend/__init__.py",
+  "backend/app/__init__.py",
+  "backend/tests/**",
   "docs/**",
+  "frontend/packages/protocol/**",
+  "scripts/**",
+  "Makefile*",
+  ".python-version",
+  "pyproject.toml",
+  "uv.lock",
   ".github/**",
 ]
 

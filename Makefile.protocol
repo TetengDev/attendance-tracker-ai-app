@@ -1,5 +1,3 @@
-# session-state Makefile fragment: make protocol
 .PHONY: protocol
 protocol:
-	python .copilot/session-state/69038c70-b46e-4456-bae9-f566fce5f03d/files/scripts/generate_protocol_ts.py
-	@echo "Protocol generation (session-state) complete"
+	python3 scripts/generate_protocol_ts.py

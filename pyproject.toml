@@ -1,0 +1,29 @@
+[project]
+name = "attendance-tracker-ai-app"
+version = "0.1.0"
+description = "Self-hosted face-recognition attendance tracker."
+readme = "CLAUDE.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "numpy>=2.2",
+  "pydantic>=2.10",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "ruff>=0.12",
+  "mypy>=1.17",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
