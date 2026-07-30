@@ -1,367 +1,588 @@
 # Face-Recognition Attendance Tracker — Architecture & Build Plan
 
+**Revision 2** — rewritten 2026-07-31 after an adversarial architecture review and an external fact-check. Revision 1's refuted claims are listed in §0 so nothing carries forward silently.
+
 ## Context
 
-`/Users/teng/Developer/Practical/Personal/Others/attendance-tracker-ai-app` is empty apart from an unfilled `CLAUDE.md` template. We are building, from scratch, a self-hosted attendance system that identifies people by face in under half a second and logs their attendance automatically — for schools, offices, and similar establishments.
+`/Users/teng/Developer/Practical/Personal/Others/attendance-tracker-ai-app` — a self-hosted attendance system that identifies people by face in under half a second and logs attendance automatically, for schools, offices, and similar establishments. Single organization, many kiosks, many locations. Face recognition runs fully offline on CPU; no biometric data leaves the premises.
 
-The reference project `agentic-company-os` turned out to be a **catalog that generates Claude Code agent teams**, not app scaffolding. It contributes the build *process* (installable `developers`/`design`/`qa` subagent teams, three generic SKILL.md bodies, a Makefile/CI shape) — no application code.
-
-**This deliverable is the plan plus a Linear backlog.** Per your decision, execution happens in a later session, where subagents pick up Linear issues in parallel.
+Revision 1 was approved and seeded as 78 Linear issues (TEN-5…TEN-82). It was then reviewed two ways: a solutions-architect pass over the design, and a source-verified fact-check of its technical and legal claims. Both found real defects. **This document is the corrected plan and, deliberately, a reference document rather than a narrative** — §2 contains copyable contracts so parallel implementation agents copy specifications instead of inventing them.
 
 ### Locked decisions
 
 | Decision | Choice |
 |---|---|
-| Face engine | Python + ONNX Runtime — SCRFD detect, ArcFace `w600k_r50` embed, MiniFASNet liveness. Fully offline, CPU, zero per-scan cost. |
-| Model licensing | **Swappable `FaceEngine` Protocol.** Start on `buffalo_l`; model path + preprocessing are config, so replacement is a config change + re-embed job. |
+| Face engine | ONNX Runtime — SCRFD detect, ArcFace `w600k_r50` embed, MiniFASNet liveness. Offline, CPU. |
+| Model licensing | Swappable `FaceEngine` Protocol. Start on `buffalo_l`; model path + preprocessing are config. |
 | Deployment | Single organization, self-hosted. Many devices and locations, one tenant. |
-| v1 features | Passive liveness · shifts & late detection · multi-device/location · notifications — all in scope. |
-| Admin config | Branding + kiosk text + attendance rules as settings rows, live-applied without redeploy. |
-| Sequencing | Plan now, execute later, tracked as Linear issues for parallel agents. |
+| **Record grain** | **Per-day.** One `attendance_record` per person per business date. Periods are a later add-on — the natural key is forward-compatible (§2.5) so adding them is data, not a migration. |
+| **Jurisdiction** | **Philippines / non-EU.** RA 10173 (Data Privacy Act) is the governing law. EU support is a backlog item, not v1 (§7.4). |
+| v1 features | Passive liveness · shifts & late detection · multi-device/location · notifications. |
+| Admin config | Branding, kiosk text, attendance rules as settings rows, live-applied without redeploy. |
 
 ### Verified environment
 
-Apple M5 Pro (arm64), macOS. `uv`, Node 26, bun, Docker 29.6.1, libpq present. **Pin Python 3.12.13** — the lowest-risk point where every wheel in the chain (`onnxruntime` 1.28, `onnx` 1.22, `opencv-python`, `numpy` 2.5, `scikit-image` 0.26) exists as an arm64 binary. Not 3.14: `onnx` only reaches it via an abi3 wheel and `opencv-python` is the shakiest link, for zero gain.
+Apple M5 Pro (arm64), macOS. `uv`, Node 26, bun, Docker 29.6.1. **Pin Python 3.13** (see §0).
 
 ---
 
-## Stack
+## 0. Corrections from review
+
+Revision 1 claims that were **refuted by primary sources**. Each is already fixed in the body of this document; this table exists so the change is auditable and so nobody reintroduces the original.
+
+| # | Rev-1 claim | Verdict | Correction |
+|---|---|---|---|
+| 1 | MiniFASNet input is "BGR uint8→float32 with **no** normalization" | **REFUTED** | Reference uses `transforms.ToTensor()`, which divides by 255 and transposes HWC→CHW. True contract: **BGR, CHW, float32 scaled to [0,1]**, no mean/std. Feeding 0–255 saturates the net and flattens the softmax — this would have silently broken spoof detection. |
+| 2 | Client sends bbox "expanded 2.0×" | **REFUTED** | `parse_model_name` reads the crop scale from the filename: `2.7_80x80_MiniFASNetV2` → **2.7×**, `4_0_0_80x80_MiniFASNetV1SE` → **4.0×**. Two different crops are required. Client sends a **≥4.0× region plus bbox coords**; the server cuts both crops. |
+| 3 | "Verify the live class index empirically" | Confirmed, and answered | `test.py`: `label == 1` → real face. **Index 1 = live.** Also: the two softmaxes are **summed then divided by 2**, not averaged pairwise. Keep a startup assertion anyway. |
+| 4 | ARQ is the job runner | **REFUTED as forward-looking** | ARQ is **maintenance-only** (python-arq/arq#510, Oct 2025 — "no time to put significant effort into arq"). Still releases and supports 3.14, so shipping on it is fine. **Put it behind a `JobQueue` protocol**; `taskiq` is the escape hatch (but is still alpha-classified and moves cron to a separate package, so it is not a free upgrade). |
+| 5 | Pin Python 3.12.13 because opencv/onnx wheels don't exist higher | **REFUTED** | 3.12 is now security-only. `opencv-python` 5.0 ships one `cp37-abi3` wheel covering 3.7–3.14; `onnxruntime` 1.28 ships arm64 wheels for cp311–cp314. The stated rationale is false. **Pin 3.13** (bugfix through 2029, full wheel coverage). |
+| 6 | Vite 6 | **REFUTED** | **Vite 8** (Mar 2026, Rolldown). React 19 and Tailwind 4 are current. |
+| 7 | ONNX Model Zoo ArcFace ResNet100 is the permissive fallback | **Partially refuted** | License **is** Apache-2.0 (correct). But the repo is archived and LFS downloads ended 1 Jul 2025 — fetch from Hugging Face. And it is materially weaker: **CFP-FP 94.21 vs buffalo_l's 99.20**. CFP-FP is the frontal-vs-profile benchmark, which is exactly the off-angle kiosk approach. Treat as fallback, not peer. |
+| 8 | WeasyPrint needs Pango **and Cairo** | Partially refuted | v69 needs **Pango only**; rendering goes through `pydyf`. Container requirement (Pango + fonts) still holds. |
+| 9 | Match threshold 0.45 | Refined | InsightFace's own guidance puts **0.30–0.45 as the 1:1 band** at FMR 1e-4…1e-5. Since 1:N needs more, expect the swept value to land **above** 0.45 (0.45–0.55). The `evaluate.py` sweep is blocking, not advisory. |
+| 10 | Server pipeline 50–90 ms | At risk | Practitioner reports put a full buffalo_l pipeline at **100–200 ms on modern laptop CPUs**. Treat int8 `w600k_r50` and reduced `det_size` as **expected**, not fallback. Note `intra_op_num_threads=1` (pinned for test determinism) makes this worse — use different thread settings in production. |
+| 11 | BIPA is "the highest-dollar risk" | Overstated | Illinois SB 2979 (Aug 2024) made repeated collection by the same method a **single violation**, killing the per-scan damages theory; the 7th Circuit held it **retroactive** in Apr 2026. All controls still required; exposure shrank. |
+| 12 | *(not covered in rev 1)* | **New** | EU: consent is **not** a valid lawful basis for school attendance biometrics — the Swedish DPA's first-ever GDPR fine was this exact use case (power imbalance + proportionality), and the Italian SA fined a school for staff biometric attendance in 2025. EU AI Act applies fully **2 Aug 2026**; Art. 5(1)(f) **prohibits emotion inference in workplaces and schools**. See §7.4. |
+
+Architecture defects found in review are corrected in §3–§5 and flagged inline as **[FIX-n]**.
+
+---
+
+## 1. Stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Backend | Python 3.12 + FastAPI + Pydantic v2 + uvicorn | The face engine is Python and sits on the 500 ms critical path. Any other API language forces an IPC hop and a second image serialization per scan. |
+| Backend | **Python 3.13** + FastAPI + Pydantic v2 + uvicorn | Face engine is Python and sits on the latency path; any other API language adds an IPC hop and a second image serialization per scan. |
 | ORM | SQLAlchemy 2.0 async (asyncpg) + Alembic | |
-| DB | Postgres 17 + pgvector (Docker Compose) | Relational-heavy domain. pgvector for offline analytics and duplicate detection — **not** the hot path. |
-| Vector search | **In-process NumPy brute force** | 5,000 people × 5 embeddings = 25k × 512 × f32 = 51 MB; one BLAS `sgemv` in 2–6 ms. Exact by construction — ANN recall misses concentrate exactly at the decision boundary, where a silent false-reject is undebuggable in the field. Also the only option compatible with encrypted embeddings. |
-| Cache / locks / broker | Redis 7 | Atomic scan cooldowns (`SET NX EX`), rate limits, sessions, settings cache + pub/sub invalidation. |
-| Jobs | **ARQ** (redis-backed, asyncio-native) | Same runtime as FastAPI, built-in cron. Celery's asyncio story is still awkward; RQ has no async. |
-| Frontend | React 19 + TS + Vite 6, TanStack Router/Query, Tailwind 4 + shadcn/ui | Two separate bundles: `apps/kiosk` and `apps/admin` — the kiosk must not ship admin JS. |
-| Client face gating | `@mediapipe/tasks-vision` BlazeFace (WASM+SIMD), **vendored not CDN** | ~1–3 ms/frame. Not the browser `FaceDetector` API (Chromium-only, flagged). |
-| Export | `xlsxwriter` (`constant_memory=True`), WeasyPrint (in the worker container) | |
-| Tooling | `uv` + `uv.lock`, ruff, mypy strict, pytest; bun for frontend | |
+| DB | **Postgres 17, no pgvector** | **[FIX-D4]** pgvector was carried for analytics and duplicate detection, but embeddings are AES-GCM encrypted and therefore opaque to pgvector operators — it would have been an extension and a non-default image doing nothing reachable. Duplicate detection runs in the NumPy index that already exists. |
+| Vector search | In-process NumPy brute force | 25k × 512 × f32 = 51 MB; one BLAS `sgemv`. Exact by construction — ANN recall misses concentrate at the decision boundary, where a silent false-reject is undebuggable in the field. Also the only option compatible with encrypted embeddings. |
+| Cache / locks | Redis 7, **two logical roles** | **[FIX-B5]** `volatile-ttl` cache for cooldowns/rate-limits/settings; `noeviction` + AOF store for jobs and admin sessions. Neither Redis default is acceptable: `noeviction` makes `SET NX EX` fail on the scan path under queue pressure; `allkeys-lru` silently evicts cooldowns (double-punches) and sessions (mass logout mid-shift). |
+| Jobs | ARQ **behind a `JobQueue` protocol** | Maintenance-only upstream (§0 #4). Same hedge as `FaceEngine`. |
+| Frontend | React 19 + TS + **Vite 8**, TanStack Router/Query, Tailwind 4 + shadcn/ui | Two bundles: `apps/kiosk`, `apps/admin`. Kiosk must not ship admin JS. |
+| Client gating | `@mediapipe/tasks-vision` (v1.0.0, Jul 2026) BlazeFace, **vendored not CDN** | Kiosk must work offline. Per-frame cost is unverified — measure it. |
+| Export | `xlsxwriter` (`constant_memory=True`), WeasyPrint 69 (Pango only) | |
 
-**Repo layout:** `/backend` (uv) · `/frontend` (bun workspaces) · `/models` (vendored ONNX + checksums) · `/infra` (compose, Caddy) · `/docs`
-
----
-
-## 1. Scan pipeline — target < 500 ms end to end
-
-**The browser gates; the server recognizes.** Never compute embeddings client-side: anyone with devtools could submit an arbitrary embedding, and you'd have to ship the gallery to the kiosk. The client's only job is deciding "is this frame worth 100 ms of server time?"
-
-**Client gate** (every frame, 320×240 offscreen canvas): exactly one face → bbox ≥ 8% of frame and inter-ocular ≥ 90 px → centered within 20% → variance-of-Laplacian sharpness floor (motion blur is the #1 cause of bad embeddings) → mean luma in [40, 220] → **stability gate: bbox IoU ≥ 0.9 across 3 frames and ≥ 120 ms elapsed**. Throttle to one submission per 400 ms; hard-stop after a match until the face leaves frame.
-
-On pass, send the bbox **expanded 2.0×** (MiniFASNet needs that context), letterboxed to 480×480, JPEG q=0.85 → 18–35 KB. Send a 2-frame burst 150 ms apart; server scores both, takes the better, and requires both to agree on identity or drops to ambiguous.
-
-**Transport: WebSocket** `wss://host/ws/kiosk`, one per kiosk, device JWT at connect, 20 s heartbeat. Chosen over HTTP POST for: no per-attempt handshake, and **server→client progressive feedback** (`detected → checking → Welcome, Maria`) which makes 350 ms *feel* instant. Also carries backpressure and live settings push. Keep `POST /scan` as fallback. Start with JSON+base64 for debuggability; go binary only if measured.
-
-**Server pipeline, in order:**
-
-```
-1. Auth / token bucket        ~0.2 ms
-2. JPEG decode (cv2)          ~2-4 ms
-3. SCRFD detect               ~12-25 ms   det_size=(384,384); reject 0 or >1 face, det_score < 0.60
-4. 5-point align → 112×112    ~1 ms       ArcFace canonical similarity transform
-5. LIVENESS (MiniFASNet)      ~4-8 ms     ← before recognition: 5× cheaper, and a spoof must never touch the gallery
-6. ArcFace embed (r50)        ~25-40 ms   512-d, L2-normalized
-7. Gallery matmul             ~2-6 ms     top-5 cosine
-8. Decision + Redis cooldown  ~1 ms
-9. Respond, THEN enqueue DB write + record resolution
-```
-
-Server wall clock ~50–90 ms; ~220–380 ms end-to-end on LAN.
-
-**Liveness:** two Apache-2.0 models (`2.7_80x80_MiniFASNetV2`, `4_0_0_80x80_MiniFASNetV1SE`), 80×80 **BGR uint8→float32 with no mean/std normalization** (real gotcha — the reference feeds raw BGR). Average the two softmaxes; accept at `live_score ≥ 0.75`. **Verify the "live" class index empirically** — wrong class ordering is the single most common implementation bug here.
-
-`liveness_mode ∈ {off, monitor, enforce}` as a setting. **Ship at `monitor`.** Enforcing on day one, before the threshold is tuned against your actual kiosk lighting, produces a lockout incident. Monitor mode logs what *would* have been blocked so you tune on real data.
-
-**Match thresholding** — cosine on L2-normalized embeddings, every number a settings row:
-
-| Band | Action |
-|---|---|
-| `top1 ≥ 0.45` and `top1 − top2_other_person ≥ 0.05` | **Accept** |
-| `top1 ≥ 0.45`, margin `< 0.05` | **Ambiguous** — "step closer". Log it; this is your enrollment-hygiene signal (twins, siblings, bad enrollment) |
-| `0.38 ≤ top1 < 0.45` | **Low confidence** — reject (default for students) or accept-with-tap-confirm (default for offices) |
-| `top1 < 0.38` | **Unknown** — offer PIN/QR fallback |
-
-0.45 is a starting point, not gospel. **1:N identification needs a higher threshold than the 1:1 verification numbers you'll find quoted**, because you take a max over N candidates and false-accept probability grows roughly linearly with gallery size. Tune via `evaluate.py` (Phase 1): ≥100 identities × ≥6 images, enroll 3 / probe 3, sweep 0.20→0.70, **pick where FAR ≤ 0.1%** (a false accept is attendance fraud; a false reject is a retry). If the resulting FRR > 3%, enrollment quality is the problem, not the threshold. Log `top1_score` on every scan so the ROC can be re-derived from production data after 30 days and retuned without redeploy.
-
-**Anti-double-scan:** `scan_cooldown_seconds` (default 60) via `SET scan:cd:{person}:{scope} NX EX` — atomic and correct across workers. `cooldown_scope` defaults to **location**, not device, otherwise someone walks to the next turnstile and double-punches. Plus per-device scan rate (2/s) and **unknown-face rate limit (10/min → 60 s lockout)**, which is what blocks gallery probing.
+Repo: `/backend` (uv) · `/frontend` (bun workspaces) · `/models` (vendored ONNX) · `/infra` · `/docs`
 
 ---
 
-## 2. Data model
+## 2. Contracts — write these BEFORE any parallel work
 
-All `timestamptz` stored UTC. UUID PKs except high-volume append tables (bigint identity, for index locality). Soft-delete on entities; **hard delete on biometric tables**.
+The review's central finding on token efficiency: **every tunable in revision 1 was stated once, in prose, inside a table cell, with no key name.** Three agents would produce `face.match.threshold`, `matching_threshold`, and `MATCH_THRESHOLD`, and the settings, matcher, and admin-UI agents would not agree.
 
-**People:** `people` (external_id, names, role, status, pin_hash, qr_secret, custom_fields jsonb) · `groups` (self-referencing `parent_group_id` so Grade 7 → 7-A nests; `type: class|section|department|team`) · `person_groups` (M2M **with `effective_from`/`effective_to`** — students change sections mid-year and last year's report must still be right) · `guardians` / `person_guardians`.
+Everything in this section is a specification to **copy verbatim**, not a description to interpret. These land in Phase 0.5, which blocks all parallel work.
 
-**Biometrics:** `enrollment_assets` (kind `upload|photo_capture|live_capture`, sha256, capture_pose, quality/det/blur/brightness scores, `purge_after`) · `face_embeddings` (`vector` **bytea, AES-GCM encrypted**, model_name/version, pose, quality, `is_active`, `source`) · `consents` (consent_type, granted_by self/guardian, relationship, method, `policy_version`, ip, revoked_at).
+### 2.1 `SETTINGS_SCHEMA`
 
-> **Multiple embeddings per person is mandatory** — target 5 (frontal, ±20° yaw, slight up, one with glasses if worn). Require ≥3 before `enrollment_complete`.
+`backend/app/settings/registry.py`. Drives server-side validation *and* admin-UI generation. Scope column: `O`=org, `L`=location, `D`=device. Resolution is `D > L > O > code default`.
 
-**Devices:** `locations` (**`timezone` IANA required** — all schedule math is location-local) · `devices` (location, `direction: in|out|bidirectional`, token_hash + prefix, pairing_code, status, last_seen, `settings_override` jsonb, allowed_cidrs) · `device_heartbeats` (7-day retention; drives the offline-kiosk alert you will absolutely need).
+| Key | Type | Default | Range | Scope |
+|---|---|---|---|---|
+| `face.match_threshold` | float | `0.45` | 0.20–0.80 | O |
+| `face.match_margin` | float | `0.05` | 0.0–0.30 | O |
+| `face.low_confidence_threshold` | float | `0.38` | 0.20–0.80 | O |
+| `face.low_confidence_action` | enum | `reject` | `reject`\|`confirm` | O·L |
+| `face.det_score_min` | float | `0.60` | 0.10–0.99 | O |
+| `face.det_size` | int | `384` | 128–800 | O |
+| `liveness.mode` | enum | `monitor` | `off`\|`monitor`\|`enforce` | O·L·D |
+| `liveness.threshold` | float | `0.75` | 0.0–1.0 | O |
+| `scan.cooldown_seconds` | int | `60` | 0–3600 | O·L |
+| `scan.cooldown_scope` | enum | `location` | `device`\|`location`\|`global` | O |
+| `scan.duplicate_window_seconds` | int | `300` | 0–3600 | O |
+| `scan.rate_per_second` | int | `2` | 1–20 | O·D |
+| `scan.unknown_rate_per_minute` | int | `10` | 1–120 | O·D |
+| `scan.unknown_lockout_seconds` | int | `60` | 0–3600 | O·D |
+| `scan.min_inter_location_seconds` | int | `120` | 0–7200 | O |
+| `scan.max_offline_backdate_minutes` | int | `240` | 0–1440 | O |
+| `kiosk.gate.min_bbox_area_pct` | float | `8.0` | 1–50 | O·D |
+| `kiosk.gate.min_interocular_px` | int | `90` | 30–300 | O·D |
+| `kiosk.gate.max_center_offset_pct` | float | `20.0` | 5–50 | O·D |
+| `kiosk.gate.min_sharpness` | float | `60.0` | 0–1000 | O·D |
+| `kiosk.gate.luma_min` / `luma_max` | int | `40` / `220` | 0–255 | O·D |
+| `kiosk.gate.stability_iou` | float | `0.90` | 0.5–1.0 | O |
+| `kiosk.gate.stability_frames` | int | `3` | 1–10 | O |
+| `kiosk.gate.stability_ms` | int | `120` | 0–2000 | O |
+| `kiosk.submit_throttle_ms` | int | `400` | 100–5000 | O·D |
+| `kiosk.burst_count` | int | `2` | 1–5 | O |
+| `kiosk.burst_interval_ms` | int | `150` | 50–1000 | O |
+| `kiosk.crop_expand` | float | `4.0` | 2.0–6.0 | O |
+| `kiosk.greeting_text` | str | `"Welcome"` | ≤120 chars | O·L·D |
+| `kiosk.locale` | str | `"en"` | BCP-47 | O·L·D |
+| `kiosk.result_duration_ms` | int | `3000` | 500–15000 | O·L·D |
+| `kiosk.sound_enabled` / `show_photo` | bool | `true` / `true` | | O·L·D |
+| `branding.org_name` | str | `""` | ≤120 | O |
+| `branding.logo_asset_id` | uuid? | `null` | | O·L |
+| `branding.primary_color` / `accent_color` | str | `#5e6ad2` / `#4cb782` | hex | O·L |
+| `attendance.grace_in_minutes` | int | `10` | 0–240 | O·L |
+| `attendance.grace_out_minutes` | int | `10` | 0–240 | O·L |
+| `attendance.absent_after_minutes` | int | `60` | 5–1440 | O·L |
+| `attendance.min_dwell_minutes` | int | `5` | 0–480 | O·L |
+| `attendance.pairing_strategy` | enum | `first_last` | `device_direction`\|`toggle`\|`first_last` | O·L |
+| `attendance.day_boundary_hour` | int | `0` | 0–23 | O·L |
+| `attendance.auto_close_enabled` | bool | `false` | | O·L |
+| `attendance.absence_notify_delay_minutes` | int | `10` | 0–240 | O |
+| `privacy.region` | enum | `PH` | `PH`\|`US`\|`EU`\|`OTHER` | O |
+| `privacy.store_enrollment_originals` | bool | `true` | | O |
+| `privacy.store_failed_scans` | bool | **`false`** | | O |
+| `privacy.debug_capture_mode` | bool | `false` | auto-expires 24h | O·D |
+| `retention.embeddings_days_after_inactive` | int | `1095` | 30–3650 | O |
+| `retention.enrollment_images_days` | int | `1095` | 30–3650 | O |
+| `retention.unknown_face_hours` | int | `72` | 1–720 | O |
+| `retention.events_days` / `records_days` / `audit_days` | int | `2555` | 365–3650 | O |
 
-**Scheduling:** `shifts` (start/end time, `crosses_midnight`, grace_in/out, `absent_after_minutes`, min_dwell, break) · `schedules` · `schedule_rules` (weekday → shift, optional `period_label` for schools) · `schedule_assignments` (**resolution order: person > group > location > org default**) · `calendar_days` (holiday/closure/half_day/special) · `person_exceptions` (leave/sick/excused/field_trip — what turns an Absent into an Excused, **editable after the fact**).
+### 2.2 `FaceEngine` Protocol
 
-**Attendance — the load-bearing three-table split:**
+`backend/app/face/protocol.py`. Images are **BGR uint8 HWC** throughout — never RGB, never float, at any boundary.
 
-1. **`attendance_events`** — raw, immutable, append-only. person_id (nullable — unknown faces get a row), device, location, `occurred_at`, `business_date`, event_type (`check_in|check_out|scan|denied_spoof|denied_low_confidence|unknown_face|manual`), match_score, match_margin, liveness_score, det_score, latency_ms, `idempotency_key` unique. **Never UPDATE or DELETE** — corrections are new rows with `supersedes_event_id`.
+```python
+Bbox = tuple[int, int, int, int]          # x1, y1, x2, y2
+Landmarks = np.ndarray                     # (5, 2) float32
 
-2. **`expected_attendance`** — the materialization trick that makes Absent tractable. person × business_date × shift × period, with absolute `expected_start_at`/`expected_end_at`. A nightly job expands schedules ± calendar ± exceptions 14 days ahead. **Absent then becomes "an expected row with no satisfying event"** — one indexable `WHERE NOT EXISTS`, and every report becomes a left join instead of a `generate_series` nightmare.
+@dataclass(frozen=True)
+class Detection:
+    bbox: Bbox; det_score: float; landmarks: Landmarks
+    blur_var: float; brightness: float
 
-3. **`attendance_records`** — derived classification, a **rebuildable cache**. status (`on_time|late|absent|excused|early_out|incomplete|holiday|not_scheduled|present_unscheduled`), late_minutes, worked_minutes, `is_manual_override`, `compute_version`. Must be fully reconstructible from events + expected + overrides. **`is_manual_override` is inviolable** — recomputation never clobbers it. Retrofitting that after someone's payroll correction vanishes is a bad day.
+@dataclass(frozen=True)
+class LivenessResult:
+    live_score: float                      # combined[1] after summing both softmaxes / 2
+    per_model: tuple[float, ...]
+    passed: bool                           # live_score >= liveness.threshold
 
-**Config & ops:** `settings` (dotted key, jsonb value, **scope `org|location|device` with resolution device > location > org > code default**, Redis-cached with pub/sub invalidation → live in < 1 s) · `admin_users` (argon2id, role, `scope_group_ids[]` so teachers see only their sections, totp_secret) · `admin_sessions` · `audit_log` (**append-only with a `prev_hash`/`hash` chain** — 10 lines, makes tampering detectable in a system holding biometrics) · `notifications` (with **`dedupe_key` unique** — what stops the 3 a.m. duplicate-alert incident) · `notification_rules` · `report_jobs` · `assets`.
+@dataclass(frozen=True)
+class Embedding:
+    vector: np.ndarray                     # (512,) float32, L2-normalized
+    model_name: str; model_version: str
 
-A typed `SETTINGS_SCHEMA` registry in code drives both server-side validation and auto-rendering of the admin UI, so adding a setting is a backend-only change.
+class FaceEngine(Protocol):
+    def detect(self, bgr: np.ndarray) -> list[Detection]: ...
+    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...   # -> (112,112,3) BGR
+    def liveness(self, bgr: np.ndarray, bbox: Bbox) -> LivenessResult: ...
+    def embed(self, aligned: np.ndarray) -> Embedding: ...
+    @property
+    def model_version(self) -> str: ...
 
----
-
-## 3. Attendance state machine
-
-`resolve(person_id, business_date)` is a **pure, idempotent function**: reads `expected_attendance` + `attendance_events` (± overnight window), writes `attendance_records`. Pure means you can re-run it after a schedule edit, a manual correction, or a bug fix and it converges. Triggered per accepted event via ARQ with job key `resolve:{person}:{date}` and a 2 s debounce (a burst of scans collapses to one computation), plus a nightly full sweep.
-
-**`business_date` is defined explicitly, never inferred from UTC:** `(occurred_at in location.tz − day_boundary_hour).date()`, where `day_boundary_hour` defaults to 00:00 and is set to ~04:00 for overnight-shift sites. Overnight shifts are the classic trap — a 22:00–06:00 shift check-in and check-out land on different calendar dates, so pairing operates on the `expected_start_at`/`expected_end_at` **interval**, not the date.
-
-**Classification** given expected `[S,E]`, grace-in `Gi`, grace-out `Go`, absent-after `A`:
-
-| Condition | Status |
-|---|---|
-| `person_exceptions` covers the date | `excused` |
-| Non-working per `calendar_days` / `schedule_rules` | `holiday` / `not_scheduled` |
-| Events but no expected row | `present_unscheduled` |
-| First IN ≤ `S + Gi` | `on_time` |
-| `S + Gi` < first IN ≤ `S + A` | `late`, `late_minutes = in − (S + Gi)` |
-| No IN by `S + A`, none later | `absent` |
-| Last OUT < `E − Go` | `early_out` |
-| IN, no OUT by `E + auto_close` | `incomplete` → optionally auto-closed |
-
-`late` and `early_out` aren't mutually exclusive — model `status` plus boolean `was_late` / `left_early` so reports count both.
-
-**Entry/exit pairing** — configurable, because schools and offices genuinely differ:
-- `device_direction` — the device declares IN or OUT (turnstile-style, cleanest)
-- `toggle` — first scan IN, next scan after `min_dwell_minutes` is OUT (absorbs "scanned twice at the door")
-- `first_last` — first event of the day IN, last OUT, everything between ignored. **Default for `role = student`**; simplest and most robust, and what most schools actually want.
-
-Pairing runs over the person's event stream regardless of which device produced each event, so an IN at Building A / OUT at Building B is allowed but flagged `location_mismatch` — locking to a single location would break every real multi-building site.
-
-**Generating Absent** (the scan that never happens) — three ARQ crons:
-- `expand_schedules` — 00:15 local per location + on-demand on any schedule/calendar/exception change. Idempotent upsert 14 days ahead; deletes stale future rows, never touches past rows.
-- `mark_absences` — **every 5 minutes**, not nightly, because the alert must be timely: a parent wants the SMS at 08:45. Absence is provisional — a late scan flips `absent → late` through the same resolver, with a `retraction` notification template.
-- `close_open_records` — 23:50 local; auto-closes `incomplete`, emits daily summaries.
-- `recompute_range(from, to, person_ids?)` — admin-triggered escape hatch for "the schedule was wrong for three weeks". **Build it in Phase 5, not later.**
-
----
-
-## 4. API surface
-
-All under `/api/v1`. Admin routes: session cookie + CSRF. Kiosk routes: device JWT.
-
-```
-auth/         login logout me · totp/{setup,verify} · password/{change,reset/*}
-admin-users/  CRUD
-devices/      CRUD · {id}/pairing-code · {id}/revoke · pair · token/refresh · {id}/heartbeats
-locations/ groups/ people/   CRUD · people/import (CSV) · {id}/attendance · {id}/groups · {id}/exceptions
-guardians/    CRUD · people/{id}/guardians
-enrollment    people/{id}/enrollment/{upload,capture,session} · WS /ws/enroll
-              people/{id}/enrollment/session/{sid}/commit · {id}/enrollment/quality
-              people/{id}/embeddings (metadata only) · DELETE {eid} · rebuild
-              enrollment/validate · enrollment/duplicates
-scan          WS /ws/kiosk · POST /scan · POST /scan/pin · GET /kiosk/bootstrap
-scheduling    shifts/ schedules/ schedules/{id}/rules · schedule-assignments/ · calendar-days/
-              schedules/preview   ← expected rows before saving
-attendance/   events · records · records/{id}/override · manual · recompute · live
-              WS /ws/dashboard
-settings/     GET · GET /schema (drives admin UI) · PATCH · branding/logo · reset/{key}
-reports/      catalogue · {key}/run · {key}/export · report-jobs/{id}[/download]
-notifications notification-rules/ · notifications/ · {id}/retry · test · templates/{key}
-compliance    people/{id}/consents[/{cid}/revoke] · {id}/erase · {id}/data-export
-              audit-log · audit-log/verify · retention/policy · retention/run
-ops           health · health/deep · metrics · system/face-engine
+class FakeFaceEngine(FaceEngine):
+    def next_result(self, *, person: str | None = None, score: float = 0.9,
+                    liveness: float = 0.95, n_faces: int = 1,
+                    det_score: float = 0.9) -> None: ...
+    def queue_results(self, results: list[dict]) -> None: ...
+    def reset(self) -> None: ...
 ```
 
----
+**MiniFASNet preprocessing, exact** *(§0 #1, #2, #3)*: for each model, crop the bbox expanded by that model's filename scale (2.7 and 4.0), `cv2.resize` to 80×80, keep **BGR**, transpose HWC→CHW, `astype(float32) / 255.0`, no mean/std. Sum the two 3-class softmaxes, divide by 2, take **index 1** as `live_score`. Assert the class index at startup against a bundled known-live and known-spoof fixture.
 
-## 5. Frontend surfaces
+### 2.3 Kiosk WebSocket contract
 
-**Kiosk** (`/kiosk`, separate PWA bundle, fullscreen): `getUserMedia` 1280×720, offscreen gating loop, vendored MediaPipe WASM, persistent WS with backoff reconnect, and an **IndexedDB offline queue** replayed on reconnect (safe via `idempotency_key`). Overlay ring states (searching → face found → hold still → checking → result), large result card with photo/name/IN-OUT/late badge, audio + haptic feedback, always-visible PIN/QR fallback, Wake Lock, hidden long-press + PIN diagnostics panel. All text/colors/logo from `/kiosk/bootstrap`, live-updated via WS push.
+`backend/app/api/schemas/kiosk.py` is the **single source**; TypeScript is **generated** from it into `frontend/packages/protocol/` via `make protocol` — never hand-maintained in two places.
 
-> **Non-obvious blocker: `getUserMedia` requires a secure context.** `localhost` is exempt; `http://192.168.1.50` is **not**. Every LAN kiosk needs a real cert — plan **Caddy with an internal CA** (or mkcert installed per kiosk) from Phase 4. Discovering this at deployment is the most common way this class of project slips a week.
+```
+client → server
+  hello        { device_token_jwt, app_version, camera_label }
+  heartbeat    { fps, queue_depth, error_count, clock_skew_ms }
+  frame_burst  { idempotency_key, burst_seq, frames: [{ jpeg_b64, bbox,
+                 monotonic_offset_ms }], gate_metrics }
+server → client
+  ready        { gallery_version, settings_version }
+  detected     { }                                  # progressive feedback
+  checking     { }
+  result       { status, person?: {id, display_name, photo_url?},
+                 direction, occurred_at, record_status, committed: true }
+  settings_push{ settings_version, payload }
+  backpressure { retry_after_ms }
+  error        { code, message, details? }
+```
 
-**Admin dashboard** (`/admin`): live board (present/late/absent/not-yet-arrived by location and group) with WS-pushed scan feed; device health strip (a dead kiosk visible in under a minute); anomaly tray for spoof denials, unknown faces (one-click "enroll this person"), and ambiguous matches; quick manual check-in and mark-excused.
+`monotonic_offset_ms` is `performance.now()` elapsed since capture — **never an absolute client timestamp** *(§3.2)*.
 
-**Enrollment** (`/admin/people/{id}/enroll`) — three tabs, one commit step:
-1. **Upload** — drag-drop N images with inline per-image validation (face found? sharp? large enough? multiple faces? matches someone else?). Reject bad ones *before* commit.
-2. **Take a picture** — admin webcam, single shot, same validation.
-3. **Live capture (multi-angle)** — guided: "look straight → turn slightly left → turn slightly right → look up". Coarse yaw from the 5-point landmarks auto-captures when the pose target is hit. 5–8 frames total.
+**2-frame burst truth table** *(the review found this undefined)*:
 
-Commit shows the crops, per-image quality, a **duplicate check against the gallery** (blocks silently creating two records for one person — a real and common integrity failure), and consent capture. **Enrollment cannot complete without a consent row.**
-
-**Reports** (`/admin/reports`): picker → parameter form → paginated preview → export. Long exports become jobs with a progress toast. Saved presets; scheduled-reports tab.
-
-**Settings** (`/admin/settings`): auto-generated from `/settings/schema`. Sections — Branding (with **live kiosk preview**), Kiosk (greeting, language, feedback style, result duration), Attendance rules (grace, absent-after, cooldown, pairing strategy, required fields), Face engine (**threshold slider showing the historical FAR/FRR curve derived from logged scores** — this is what makes the threshold tunable in practice), Liveness, Notifications, Retention & privacy, Devices, Users & roles.
-
----
-
-## 6. Reports & export
-
-| Report | Grain | Audience |
+| Frame A | Frame B | Result |
 |---|---|---|
-| Daily attendance register | person × date | Both |
-| Period/class register | person × date × period | Schools |
-| Timesheet / Payroll summary | person × date / pay period | Offices |
-| Tardiness · Absence summary | person × range | Both |
-| Consecutive-absence (truancy) · Perfect attendance | person | Schools |
-| Headcount by hour | location × hour | Offices |
-| **Muster / fire roll** | currently checked-in by location | **Safety-critical: one click, must work degraded** |
-| Exception report | overrides, location mismatches, auto-closes, spoof denials | Compliance |
-| Device/scan health | device × day | Ops |
+| accept(P) | accept(P) | **accept P** — use higher score |
+| accept(P) | accept(Q≠P) | **ambiguous** |
+| accept(P) | ambiguous / low-conf | **accept P** |
+| accept(P) | no face | **accept P** |
+| any | liveness fail (enforce) | **denied_spoof** — a spoof in either frame denies |
+| both no face | | `NO_FACE` |
 
-Schools measure **attendance rate as % of expected sessions** per section per period with a truancy threshold; offices measure **hours, overtime, late-minute accumulation** per individual or department. Both are parameterized SQL over `expected_attendance LEFT JOIN attendance_records` — the materialized expected rows turn "attendance rate" into a clean `count(present) / count(expected)`.
+### 2.4 Error taxonomy
 
-One `ReportDefinition` per report (key, param schema, query builder, typed column spec); three renderers over the same row iterator:
-- **CSV** — `StreamingResponse` over a server-side cursor, constant memory at 1 M rows. **Emit a UTF-8 BOM** or Excel-on-Windows mangles accented names (guaranteed bug report otherwise).
-- **XLSX** — `xlsxwriter` `constant_memory=True`; frozen header, autofilter, **typed cells** (dates as dates, minutes as numbers), summary + detail sheets, conditional formatting.
-- **PDF** — WeasyPrint over Jinja templates shared with email. Branded header from settings, filter criteria in the footer, generated-at/by. *Caveat: needs Pango/Cairo — run report generation in the worker container even in dev.*
+`backend/app/errors.py`. Envelope: `{"error": {"code", "message", "details"?}}`. Codes are **stable strings the kiosk switches on** to select localized copy.
 
-Exports over ~5,000 rows go async → `report_jobs` → expiring signed URL (24 h). **Every export writes an audit row** — you must be able to answer "who took a copy of the student roster."
+| Code | HTTP | Kiosk copy (en) |
+|---|---|---|
+| `NO_FACE` | 422 | "Step into view" |
+| `MULTIPLE_FACES` | 422 | "One person at a time" |
+| `FACE_TOO_SMALL` | 422 | "Move closer" |
+| `LOW_QUALITY` | 422 | "Hold still" |
+| `LIVENESS_FAILED` | 403 | "Unable to verify — see an administrator" |
+| `AMBIGUOUS` | 409 | "Try again" |
+| `LOW_CONFIDENCE` | 409 | "Try again or use your PIN" |
+| `UNKNOWN_FACE` | 404 | "Not recognized — use your PIN" |
+| `COOLDOWN_ACTIVE` | 200 | "Already recorded at {time}" |
+| `RATE_LIMITED` | 429 | "Please wait" |
+| `LOCATION_CONFLICT` | 409 | "Recorded — flagged for review" |
+| `DEVICE_REVOKED` | 401 | "This device needs re-pairing" |
+| `SCAN_BACKEND_UNAVAILABLE` | 503 | "Temporarily unavailable — try again" |
+| `NO_CONSENT` | 422 | *(admin-only)* |
+| `DUPLICATE_ENROLLMENT` | 409 | *(admin-only)* |
+
+### 2.5 Natural keys and DDL invariants
+
+| Table | Natural key | Notes |
+|---|---|---|
+| `attendance_events` | `idempotency_key` unique | bigint identity PK. Append-only; corrections are new rows with `supersedes_event_id`. |
+| `expected_attendance` | `(person_id, business_date, shift_id, period_label)` | `period_label` **NOT NULL, default `''`** — per-day today, per-period later without a migration. |
+| `attendance_records` | `(person_id, business_date, shift_id, period_label)` | Same shape. **Per-day: `period_label = ''`.** Rebuildable cache. |
+| `attendance_overrides` | `(person_id, business_date, shift_id, period_label)` | **[FIX-A3]** New table — see below. |
+| `face_embeddings` | — | `(person_id) WHERE is_active`; `(model_name, model_version)`. |
+| `settings` | `(key, scope, scope_id)` | |
+
+**[FIX-A3] Overrides move out of `attendance_records`.** Revision 1 said records must be "fully reconstructible from events + expected + **overrides**" while storing overrides as a column *on* `attendance_records` — the reconstruction input was a subset of the output. That is circular, and it means the cache property could never actually be tested. Overrides now live in their own table with actor and reason, so `attendance_records` is genuinely disposable and the Phase 5 acceptance test becomes literally *truncate and rebuild, assert identical including overrides*.
+
+### 2.6 Classification decision table
+
+Ordered, **first match wins**. Implementation iterates this table; the Phase 5 suite iterates the same rows. `S`/`E` = expected start/end, `Gi`/`Go` = grace in/out, `A` = `absent_after_minutes`.
+
+| # | Condition | Status |
+|---|---|---|
+| 1 | an `attendance_overrides` row exists | *(its status)* |
+| 2 | `person_exceptions` covers the date | `excused` |
+| 3 | `calendar_days` non-working, or rule `is_working_day = false` | `holiday` / `not_scheduled` |
+| 4 | no expected row, events exist | `present_unscheduled` |
+| 5 | no IN **and** `as_of < S + A` | **`pending`** *(new — see [FIX-A2])* |
+| 6 | no IN **and** `as_of >= S + A` | `absent` |
+| 7 | first IN `<= S + Gi` | `on_time` |
+| 8 | first IN `<= S + A` | `late`, `late_minutes = in − (S + Gi)` |
+| 9 | IN, no OUT, `as_of > E + auto_close` | `incomplete` |
+| 10 | otherwise | `on_time` / `complete` |
+
+Independently of `status`, set flags `was_late`, `left_early`, `location_mismatch`, `was_backdated`, `auto_closed`. `late` and `early_out` are not mutually exclusive, so reports count flags, not status.
+
+### 2.7 Conventions that prevent agent collisions
+
+- **Migrations: no issue labelled `parallel-safe` may author an Alembic revision.** N agents branching off the same `down_revision` produces N heads and a conflict on every one. One owner serializes the chain.
+- **Co-owned files** structurally violate the non-overlapping-paths invariant and each need a named owner or an append-only rule: `conftest.py`, `SETTINGS_SCHEMA`, the Alembic chain, generated protocol types, the router registry.
+- **Ownership is machine-checked**: `docs/ownership.toml` maps issue key → globs; CI asserts a change set is a subset of its issue's globs. Otherwise the invariant is honor-system between agents that never see each other.
+- The committed `backend/app/**` skeleton tree lands in Phase 0.5 — ownership lines can only be non-overlapping if the layout is fixed first.
+
+---
+
+## 3. Scan pipeline
+
+### 3.1 Client gate
+
+Per frame on a 320×240 offscreen canvas, all thresholds from `kiosk.gate.*`: exactly one face → bbox area → inter-ocular distance → centering → variance-of-Laplacian sharpness (motion blur is the top cause of bad embeddings) → luma band → **stability: IoU ≥ 0.9 across 3 frames and ≥ 120 ms**. Then throttle, and hard-stop after a match until the face leaves frame.
+
+On pass, send the bbox **expanded by `kiosk.crop_expand` (4.0)** plus the bbox coordinates, letterboxed to 480×480, JPEG q=0.85. *(§0 #2 — the server needs to cut both a 2.7× and a 4.0× crop, which a 2.0× region cannot supply.)*
+
+### 3.2 [FIX-B1] Event timestamps
+
+Revision 1 never said whether events carry the kiosk clock or the server clock. Both naive answers break something: server clock converts a 40-minute offline outage into a building full of `late` arrivals on replay (contradicting the plan's own offline feature); kiosk clock lets a wall tablet's settings screen backdate arrivals, which is attendance fraud defeating the entire FAR ≤ 0.1% effort.
+
+Three fields, decided **before Phase 4** because the WS contract, the events DDL, and the resolver all encode it:
+
+| Field | Meaning |
+|---|---|
+| `client_captured_at` | untrusted, recorded for diagnosis only |
+| `server_received_at` | authoritative |
+| `occurred_at` | `server_received_at − monotonic_offset_ms` for replayed events, else `= server_received_at` |
+
+`monotonic_offset_ms` comes from `performance.now()`, immune to wall-clock tampering and NTP steps. Clamp to `scan.max_offline_backdate_minutes`, set `was_backdated`, surface in the Exception report. Heartbeat carries `clock_skew_ms`; drift shows on the device health strip.
+
+### 3.3 Server pipeline
+
+```
+1. Auth / token bucket                    ~0.2 ms
+2. JPEG decode                            ~2-4 ms
+3. SCRFD detect  (face.det_size)          ~12-25 ms
+4. 5-point align → 112×112 BGR            ~1 ms
+5. LIVENESS (two crops, 2.7× and 4.0×)    ~4-8 ms   ← before recognition: cheaper, and a spoof must never touch the gallery
+6. ArcFace embed → 512-d L2-normalized    ~25-40 ms
+7. Gallery matmul → top-5 cosine          ~2-6 ms
+8. Decision + Redis cooldown + impossible-travel
+9. WRITE THE EVENT DURABLY                ~1-3 ms   ← [FIX-B3]
+10. Respond; THEN enqueue resolve()
+```
+
+**[FIX-B3]** Revision 1 responded before writing. That is a lost-write window by construction: the kiosk has shown "Welcome, Maria" and will *not* replay from its offline queue — it received a success — so the person saw a record that does not exist, undetectably. One small INSERT against local Postgres is 1–3 ms out of a 220–380 ms budget. Only the `resolve()` enqueue is deferred.
+
+**Latency expectation** *(§0 #10)*: budget for int8 `w600k_r50` and a reduced `det_size` as the **likely** configuration, not a fallback. Production thread settings differ from the test-pinned `intra_op_num_threads=1`.
+
+### 3.4 Matching and limits
+
+Bands per `face.*` settings: accept at `top1 ≥ threshold` **and** `top1 − top2_other_person ≥ margin`; ambiguous if the margin fails; low-confidence band; else unknown → PIN/QR. Log `top1_score` on every scan so the ROC can be re-derived from production data after 30 days and retuned without a redeploy.
+
+**Threshold is set by the Phase 1 sweep, and that gate is blocking.** Expect it above 0.45 *(§0 #9)*. `evaluate.py` must report FAR **extrapolated to N=5000**, not raw at the ~100-identity eval size — the plan's own reasoning says FAR grows ~linearly with gallery size, so an un-extrapolated gate number is optimistic in the field.
+
+**[FIX-B4] Impossible-travel check**, independent of cooldown. `cooldown_scope = location` by design lets one person clear both cooldowns at two sites in the same second — which puts them in two buildings on the **muster/fire roll**, a safety-critical report. One Redis key `scan:last:{person}` → `(location_id, ts)` set atomically with the cooldown; a different location within `scan.min_inter_location_seconds` emits `LOCATION_CONFLICT` and flags the event.
+
+**Authority order** *(§0/[FIX-B5])*: the Redis cooldown is the **fast path**; the DB `idempotency_key` unique constraint plus a recent-event query is the **truth**. Revision 1 made attendance integrity a function of Redis memory pressure.
+
+### 3.5 [FIX-B2] Gallery consistency
+
+Redis pub/sub is **at-most-once** — a subscriber that is reconnecting, GC-paused, or booting misses the message permanently. Revision 1 used it as the *mechanism* for GDPR/RA-10173 erasure, meaning an erased person could still be recognized by a live process while the audit log asserted the erasure succeeded.
+
+Pub/sub becomes an optimization, never the mechanism:
+
+- Monotonic `gallery_version`, bumped **in the same transaction** as any embedding insert/delete/erase.
+- The scan process polls it cheaply and reloads deltas when it lags; pub/sub just makes that 50 ms instead of N seconds.
+- `/health/deep` exposes `gallery_version` and `index_loaded_version`, and **alarms on divergence** — revision 1 had no divergence detection at all.
+- `POST /people/{id}/erase` returns success only after `index_loaded_version >= erasure_version`, else fails loudly.
+- The same version-echo pattern applies to settings, so the "live in < 1 s" claim becomes verifiable.
+
+---
+
+## 4. Data model
+
+Timestamps `timestamptz` UTC. UUID PKs except append tables (bigint identity). Hard delete on biometric tables.
+
+**People** — `people` · `groups` (self-referencing `parent_group_id`) · `person_groups` **with `effective_from`/`effective_to`** (students change sections mid-year; last year's report must stay correct) · `guardians` / `person_guardians`.
+
+**Biometrics** — `enrollment_assets` (encrypted originals, `capture_pose`, quality scores) · `face_embeddings` (`vector` bytea AES-GCM, `model_name`/`model_version`, `is_active`) · `consents` (type, granted_by self/guardian + relationship, method, `policy_version`, IP, revocation).
+
+**Devices** — `locations` (**IANA `timezone` required**) · `devices` (direction, `token_hash` + prefix, pairing code, `allowed_cidrs`, `settings_override`) · `device_heartbeats` (7 days; drives the offline-kiosk alert).
+
+**Scheduling** — `shifts` · `schedules` · `schedule_rules` · `schedule_assignments` (**person > group > location > org**, `priority` breaks ties) · `calendar_days` · `person_exceptions`.
+
+**Attendance** — `attendance_events` (immutable) · `expected_attendance` (materialized) · `attendance_records` (derived cache) · **`attendance_overrides`** (new, §2.5).
+
+**Config & ops** — `settings` · `admin_users` (argon2id, `scope_group_ids[]`, TOTP) · `admin_sessions` · `audit_log` (append-only, `prev_hash`/`hash` chain, **head exported off-box daily** — otherwise the chain only stops an attacker who cannot recompute it) · `notifications` (`dedupe_key` unique) · `notification_rules` · `report_jobs` · `assets`.
+
+---
+
+## 5. Attendance state machine
+
+### 5.1 [FIX-A1] One writer
+
+Revision 1 had two writers to `attendance_records` with no serialization. Concretely: the sweep fires at 08:45:00 and reads a snapshot; Maria scans at 08:45:01; the sweep commits `absent` at 08:45:02 from the stale snapshot; the debounced resolve writes `late` at 08:45:03. Best case every child arriving inside a sweep window gets an absence SMS then a retraction. Worst case — sweep commits last — Maria is `absent` **despite having scanned**, until the nightly sweep.
+
+- **`mark_absences` never writes records.** It enqueues `resolve` jobs only. `resolve()` is the sole writer — this is a rule in `CLAUDE.md` alongside never-clobber-override.
+- Do not rely on ARQ job-id dedup for the debounce: a scan arriving while a resolve is in flight can have its enqueue **refused as a duplicate**, silently dropping the scan's effect. Use a `dirty:{person}:{date}` flag that resolve re-checks at completion and re-enqueues itself if set.
+- `resolved_as_of` column + conditional update, so an out-of-order job cannot overwrite a newer computation.
+- Absence *notification* is delayed from absence *classification* by `attendance.absence_notify_delay_minutes`.
+
+### 5.2 [FIX-A2] `resolve()` is pure only with `as_of`
+
+The `absent` rule is a function of wall clock — the same (expected, events) inputs must give a different answer at 08:20 than at 08:50 — so revision 1's `resolve()` read a hidden global while claiming purity. And the status enum had no pending state, forcing the live board's "not-yet-arrived" tile onto a second code path that could disagree with the resolver.
+
+```python
+def resolve(person_id: UUID, business_date: date, *, as_of: datetime) -> None
+```
+
+Plus `pending` in the status enum (§2.6 row 5). The live board now reads records instead of reimplementing classification.
+
+### 5.3 [FIX-A4] `business_date` belongs to the person, not the device
+
+Revision 1 computed it in the **scanning** location's timezone, while `expected_attendance` was materialized in the person's **home** location timezone and boundary hour. A Manila-assigned person scanning in Singapore — or a US-Eastern employee at a Central site, or a home site with `day_boundary_hour = 04:00` visiting one with `00:00` — produces `present_unscheduled` at the visited site *and* `absent` at home, for one person, one day, one instant. Multi-building scanning is explicitly normal in this design.
+
+- `attendance_events.business_date` is **NULL at write time** — the WS hot path does not know the schedule context; the resolver does.
+- `device_local_date` is stored separately for device/ops reporting.
+- The resolver matches events to expected rows by **absolute UTC interval containment**: `occurred_at ∈ [expected_start_at − lookback, expected_end_at + lookahead]`. This is already how overnight pairing works; extending it here deletes the whole bug class.
+- `business_date` becomes a reporting label derived from the matched expected row.
+- Unknown faces (`person_id IS NULL`) have no person timezone — they use the device location timezone.
+
+Also: `expected_start_at` is materialized as an absolute timestamp up to 14 days out, so a tzdata update between expansion and the date silently invalidates it. Store local wall time + tz alongside the absolute, and re-derive on tzdata version change.
+
+### 5.4 [FIX-A3] Retroactive schedule edits
+
+Revision 1's `expand_schedules` "never touches past rows", so `recompute_range` — the stated escape hatch for "the schedule was wrong for three weeks" — re-derived records from frozen, wrong expected rows and converged on the same wrong answer. The escape hatch could not reach the layer holding the error. And allowing past re-expansion would delete expected rows that override rows key to, destroying "inviolable" overrides by cascade rather than by recomputation.
+
+- `expand_schedules` gains an explicit `allow_past=True` backfill mode, invoked only by `recompute_range`.
+- Expected rows referenced by a record or override are **soft-deleted/versioned**, never hard-deleted.
+- Orphaned overrides surface in the Exception report; never silently dropped.
+- Overrides live in their own table (§2.5), so the rebuild test is real.
+
+### 5.5 [FIX-A5] Expansion cost
+
+Revision 1 re-expanded the full 14-day × 5,000-person horizon on **any** schedule, calendar, or exception change. Importing next term's calendar (30 edits) meant 30 full DELETE+INSERT passes, bloating the table daily. Row volume itself is fine for Postgres; the trigger granularity is not.
+
+- Derive the affected `(person set × date range)` from the changed entity; expand only that.
+- Coalesce/debounce expansion per location.
+- True `INSERT … ON CONFLICT DO UPDATE` on the natural key, so unchanged rows are no-ops.
+- **`person_groups` changes must trigger re-expansion** — mid-year section moves are a first-class feature in §4 and revision 1 never wired them to expansion at all.
+
+### 5.6 [FIX-B6] Duplicate people cause a permanent denial of service
+
+Two person IDs for one human (SIS import under two external_ids, or enrollments predating the duplicate check) produce embeddings ~0.9 cosine to each other. The margin rule then evaluates to **ambiguous on every scan, forever** — that individual is told "try again" indefinitely, and the only trace is a log line. Revision 1's margin rule converted a data-quality problem into a total denial of service for one person.
+
+- The ambiguity tray groups by **pair of person_ids** and offers "probably the same person → merge" as a first-class action.
+- **Define person-merge**: the never-UPDATE-events rule forces a choice; use a `merged_into` pointer, leaving events immutable.
+- Duplicate detection also runs as a **scheduled full-gallery job**, not only at enrollment commit.
+
+### 5.7 Pairing
+
+`device_direction` · `toggle` (with `min_dwell_minutes`) · **`first_last`, default** — first event of the day IN, last OUT. Pairing operates on the person's event stream across devices; IN at Building A / OUT at Building B is allowed but flagged `location_mismatch`.
+
+---
+
+## 6. Frontend, API, reports
+
+API surface is unchanged from revision 1 except: `attendance/records` gains `?as_of=`, `/health/deep` exposes gallery and settings versions, and `POST /people/{id}/erase` blocks on index convergence.
+
+**Kiosk** — gating loop, overlay states, result card, PIN/QR fallback always visible, IndexedDB offline queue with `idempotency_key` replay, Wake Lock, hidden diagnostics. All branding from `/kiosk/bootstrap`, live-pushed. **`getUserMedia` requires a secure context** — `localhost` is exempt, `http://192.168.1.50` is not, so every LAN kiosk needs a real cert (Caddy internal CA, Phase 4).
+
+**Admin** — live board, device health strip, anomaly tray (spoof denials, unknown faces, ambiguous **grouped by person pair**), people/enrollment, devices, schema-driven settings with live kiosk preview and the FAR/FRR threshold curve, manual overrides.
+
+**Reports** — daily register, timesheet, payroll summary, tardiness, absence, truancy, perfect attendance, headcount by hour, **muster/fire roll** (one click, renders from cache with a visible staleness indicator when the API is unreachable), exception report, device health. Renderers: CSV (streaming, **UTF-8 BOM** or Excel mangles accented names), XLSX (`constant_memory`, typed cells), PDF (WeasyPrint, **Pango only**). Exports >5,000 rows are async jobs with expiring signed URLs, and **every export writes an audit row**.
 
 ---
 
 ## 7. Privacy & security
 
-This is where a school deployment actually gets stopped, so it's built in from Phase 2, not bolted on.
+### 7.1 What is stored
 
-**What to store:**
-- **Embeddings: always** — the operational data.
-- **Original enrollment images: yes, encrypted, with explicit consent.** Not sentimental — **ArcFace embeddings are model-version-locked**. When you swap the recognition model (and per your licensing decision, you may), old embeddings are worthless. Without originals, that's physically re-enrolling 5,000 people; with them, it's a background job. Document it as a consented purpose and give admins a switch to disable it.
-- **Scan frames: never, by default.** Pixels are embedded and discarded. Two exceptions behind settings with hard TTLs: `store_failed_scans` (unknown/spoof, default **off**, 72 h) and `debug_capture_mode` (auto-expires 24 h, audit-logged on enable). Successful scan images add no value and multiply breach surface by scans-per-day.
-- **Never expose raw vectors over the API.** `GET /people/{id}/embeddings` returns metadata only. Face embeddings are partially invertible — published attacks reconstruct recognizable faces from ArcFace vectors. Treat a vector like a password hash that *can* be un-hashed.
+Embeddings always. **Enrollment originals: yes, encrypted, consented** — ArcFace embeddings are model-version-locked, so without originals a model swap means re-enrolling everyone. **Scan frames: never by default**; failed-scan capture is opt-in with a 72 h TTL. **Never expose raw vectors over the API** — face embeddings are partially invertible.
 
-**Encryption:** envelope-encrypt embeddings and enrollment bytes with AES-256-GCM, per-record DEK wrapped by a KEK from env/secret file, `encryption_key_id` on the row for rotation. **Consequence: a stolen `pg_dump` contains no usable biometric data** — the single most persuasive line in a privacy review, for ~80 lines of code. (This is also why the gallery lives in memory rather than pgvector: encrypted columns are opaque to pgvector operators.) TLS everywhere including LAN. KEK never in repo or DB; startup fails loudly if absent.
+### 7.2 [FIX-D2] Encryption threat model, stated honestly
 
-**Device auth, two-stage** (a forever-token on a wall-mounted tablet is a liability): admin issues an 8-char pairing code (15 min, single use) → device exchanges it for an opaque 32-byte token (stored server-side only as HMAC-SHA256 + 6-char display prefix) → device exchanges *that* for a **15-minute scan JWT** per session. Revocation is instant at refresh, immediate for open sockets via a Redis revocation set checked on heartbeat. Devices reach only scan endpoints and `/kiosk/bootstrap`; a compromised kiosk yields nothing beyond what its screen already shows, and unknown-face rate limiting blocks enumeration.
+Envelope encryption (AES-256-GCM, per-record DEK, KEK outside DB and backup) genuinely defends **an offline `pg_dump`, a stolen backup, or a lifted disk**. It does **not** defend a process holding 25,000 decrypted templates in RAM for its lifetime — and on a self-hosted box where app, DB, and KEK file often share a host, whoever reads process memory can usually read the KEK. The real adversary is *"obtains the database or backup but not the host."* Write that down rather than implying general protection.
 
-**Admin auth:** argon2id (t=3, m=64 MiB, p=4); opaque session IDs in Redis, `HttpOnly`/`Secure`/`SameSite=Lax`, 8 h idle / 24 h absolute, rotated on privilege change; CSRF double-submit; login lockout with backoff. **TOTP mandatory for any role that can export PII.** RBAC `owner|admin|hr|supervisor|viewer` with `scope_group_ids` **enforced in the query layer, not the UI**.
+Cheap hardening: `mlock` the gallery buffer or disable swap; `RLIMIT_CORE=0` and non-dumpable on the scan process; KEK on a separate mount.
 
-**Consent, retention, deletion:**
-- **Consent before capture.** No embedding may be written without an active `biometric_enrollment` consent referencing the current `policy_version` — DB check plus application guard. Re-consent required when the policy version changes.
-- **BIPA** (statutory damages, private right of action — the highest-dollar risk here, and cheap to comply with if built now): a written, publicly available biometric policy with a retention schedule → ship it as a versioned settings-editable page at `/privacy/biometrics`; written informed consent before collection; **destruction at purpose-satisfied or 3 years after last interaction, whichever is first**; no sale; reasonable standard of care.
-- **GDPR** treats embeddings as Art. 9 special-category data: explicit lawful basis, a **DPIA** (Art. 35 — biometric monitoring of students/employees triggers it; it's a document, not code), minimization, Arts. 15/17/20.
-- **Retention settings:** `embeddings_retain_days_after_inactive` 1095 (BIPA-aligned) · enrollment images 1095 · unknown-face images 72 h · attendance events/records 2555 (payroll/regulatory — these are timestamps, not biometrics) · audit log 2555, never less than the data it describes. Nightly `run_retention` writes an audit row per purge batch.
-- **Erasure** (`POST /people/{id}/erase`): hard-DELETE embeddings and enrollment assets, shred blobs, **purge the in-memory index immediately via pub/sub** (not at next restart), null PII on `people`, but **keep attendance history pseudonymized** — it's payroll/regulatory data with an independent lawful basis. Document exactly this reasoning in the privacy policy.
-- **DSAR export**: ZIP with person record, events, records, consent and notification history, and enrollment images — but **not raw embeddings** (a security risk to hand out and meaningless to the subject); disclose their count and model version in a manifest instead.
+**Replace the weak acceptance test.** `pg_dump | grep` would pass on base64 plaintext. The real test: **restore the dump on a machine without the KEK and prove the gallery cannot load.** Phase 9 must also verify the backup excludes the KEK.
 
-**Two things flagged hardest:**
-1. **`buffalo_l` is non-commercial-research-licensed** (MIT covers InsightFace's *code*, not the weights; commercial use needs a license from insightface.ai). Per your decision we build on it now — which makes the `FaceEngine` Protocol with model path and preprocessing as **data, not code**, a hard architectural requirement rather than a nicety. Phase 1 also benchmarks a permissive candidate (ONNX Model Zoo ArcFace ResNet100) and records the accuracy delta, so the swap decision later is a number, not a guess.
-2. **A non-biometric alternative is required**, not optional. Several jurisdictions effectively forbid compelling biometric collection, and some people cannot use face recognition reliably. The PIN/QR fallback is what makes the consent genuinely voluntary — build it in Phase 4, alongside the kiosk.
+### 7.3 [FIX-D1] The kiosk claim was false
 
----
+Revision 1 said "a compromised kiosk yields nothing beyond what its screen already shows." The screen shows one person transiently; the *device* holds a persistent token in IndexedDB, the bootstrap payload, and — because rate limiting applied only to *unknown* faces and the successful-match path had no limiter — an uninterrupted stream of `(name, photo, timestamp, location)` for everyone who walks past, all day. That is a photographic roster plus a movement log, exfiltrated passively from a device on a public wall.
 
-## 8. Testing strategy
+- Rewrite the claim honestly — a privacy reviewer will test that sentence.
+- Decide whether the result card needs a **photo**; if so, send a short-TTL signed URL, not embedded bytes, so captured traffic expires.
+- Distinct-identities-per-hour anomaly alert per device.
+- `allowed_cidrs` **required and enforced at WS upgrade** — the column already existed and was never used.
+- **Rotate the persistent device token on every heartbeat.** A copied token then dies at the next rotation, and two devices presenting the same generation is *detectable* → auto-revoke and alert. Token theft becomes noisy rather than silent.
 
-The central move: **`FaceEngine` is a Protocol and ~95% of the suite runs against `FakeFaceEngine`.** Everything but the model becomes ordinary deterministic software.
+### 7.4 Jurisdiction
 
-- **L1 — pure logic, no models, no DB.** Matcher bands, margin rule, cosine math, quality scoring, `business_date`, schedule priority resolution, the whole `resolve()` classifier. `hypothesis` properties: a normalized vector scores 1.0 against itself; adding an embedding never lowers that person's best score; `resolve()` is idempotent; classification is monotonic in arrival time.
-- **L2 — pipeline and API against the fake.** `fake.next_result(person="alice", score=0.62, liveness=0.91)` lets you test cooldowns, rate limits, liveness enforce/monitor branching, ambiguity, unknown-face lockout, the WS protocol, event writing, record resolution, and notification triggering with **zero images and perfect determinism**. Postgres via testcontainers, each test in a rolled-back transaction.
-- **L3 — model regression**, `@pytest.mark.models`, nightly. **Embedding stability**: fixed 112×112 `.npy` in → assert 512-d output matches a checked-in golden within `atol=1e-3`. This catches onnxruntime upgrades, model swaps, and preprocessing drift — the failures that silently degrade production accuracy without throwing. Plus accuracy regression (`TAR@FAR=1e-3 ≥ baseline − 0.01`, fail the build), liveness sanity, and a p95 < 150 ms latency guard.
+**Philippines is the governing jurisdiction (RA 10173, Data Privacy Act of 2012).** Biometric data is **sensitive personal information** under §3(l), which means: processing generally requires **consent that is specific and informed** (§13), a **Data Protection Officer** must be designated, NPC **registration** applies to systems processing sensitive data of 1,000+ individuals — a 5,000-person deployment clears that bar — and the **Security of Sensitive Personal Information** rules (§20) require encryption. Breach notification to the NPC and affected individuals is required within **72 hours** of knowledge. The existing design (consent gate, encryption, retention job, audit log, erasure) satisfies these; the additions are a **named DPO field, an NPC registration checklist, and a 72-hour breach-notification runbook**.
 
-**Fixture data:** do **not** vendor LFW/CelebA/VGGFace2 — several are research-use-only or withdrawn, and checking real people's faces into a biometrics repo is exactly what this app's privacy policy forbids. Use **synthetic 512-d vectors** with controlled intra/inter-class structure for L1/L2 (the matcher needs no pixels at all); for L3, ~50–100 synthetic or rights-cleared images stored outside the repo, with the tiny precomputed golden `.npy` files checked in as the actual assertions.
+**United States (BIPA)** — still build the written policy, retention schedule, written consent, and 3-year destruction. Exposure is materially lower than revision 1 implied (§0 #11).
 
-**Determinism traps to design around:** JPEG round-trips aren't bit-stable across libraries — assert on `.npy`, never re-decoded JPEG. `cv2.resize` and `PIL.Image.resize` differ at the same nominal interpolation — pin one preprocessing path. onnxruntime varies with thread count — fix `intra_op_num_threads=1` in tests. Time-dependent tests use `time-machine` and **run at least once in a non-UTC location timezone**; a UTC-only suite will not catch your timezone bugs.
+**EU — explicitly out of scope for v1, tracked as backlog.** The findings are recorded so the decision is informed rather than accidental: consent is **not** a valid lawful basis for school attendance biometrics (Swedish DPA's first GDPR fine, on exactly this use case — power imbalance plus a proportionality failure, since attendance can be taken less intrusively; Italian SA fined a school for staff biometric attendance in 2025). EU AI Act applies fully **2 Aug 2026**, and **Art. 5(1)(f) prohibits emotion inference in workplaces and educational institutions** — a hard "never build this" line regardless of jurisdiction.
 
-**E2E (Playwright/Chromium)** — the concrete answer to "how do you test a camera without a face": `--use-fake-device-for-media-capture --use-file-for-fake-video-capture=fixtures/alice.y4m`. Chromium feeds the Y4M to `getUserMedia` as a real camera, exercising the MediaPipe gating loop, WS protocol, and result UI genuinely end to end. Record clips for "alice walks up", "phone-screen replay", "empty frame".
+Two hooks make the EU path additive rather than a rewrite, and both are cheap now:
+1. `privacy.region` setting already exists (§2.1) and can hard-disable face capture.
+2. The **PIN/QR fallback is built in Phase 4 regardless** — it is an accessibility requirement and what makes consent genuinely voluntary. An EU profile would promote it to primary and use the face only to *confirm* a claimed identity (1:1), which likely falls under the AI Act Recital 17 verification carve-out that 1:N gallery search does not.
 
-**Load (k6/locust):** 20 kiosks × 1 scan / 3 s against a 5,000-person gallery, p95 < 500 ms, no cooldown leakage across workers. This is also how you discover that N uvicorn workers each loading three ONNX models eats N × ~600 MB RAM and contends on threads — **the fix is a single dedicated scan process with the model-free API on separate workers, decided in Phase 4 rather than in production.**
+### 7.5 Consent, retention, deletion
+
+No embedding without an active `biometric_enrollment` consent at the current `policy_version`, enforced at DB and application layers. Retention per `retention.*` (§2.1), nightly, audited per batch. **Erasure**: hard-delete embeddings and assets, shred blobs, **block on index convergence** (§3.5), null PII, keep attendance history pseudonymized — it is payroll/regulatory data with an independent lawful basis. **DSAR export**: everything except raw embeddings; disclose their count and model version in a manifest.
 
 ---
 
-## 9. Build phases
+## 8. [FIX-D3] Scan topology — decide in Phase 0.5, not Phase 4
 
-Each phase is independently verifiable. Phase 1 de-risks the face engine before any UI exists.
+Revision 1 stated the conclusion ("a single dedicated scan process with the model-free API on separate workers") while filing it as a Phase 4 decision informed by a Phase 10 load test. But the memory arithmetic (N workers × 3 ONNX models × ~600 MB) is knowable on day one, and it is a **process-boundary** decision — it determines whether the WS endpoint calls the engine in-process or across an IPC hop. That endpoint is the first Phase 4 issue and everything else in Phase 4 blocks on it, so deciding afterwards means rebuilding it.
 
-| # | Phase | Est. | Done when |
-|---|---|---|---|
-| 0 | **Scaffold** — uv @ 3.12.13, compose (PG17+pgvector, Redis 7), Caddy, ruff/mypy/pytest, bun workspace, `CLAUDE.md`, agentic-company-os teams installed | 0.5 d | `docker compose up` reaches PG + Redis; `uvicorn` serves `/health`; empty suite passes |
-| 1 | **Face engine spike — CLI only, no web** | 2–3 d | One command over two image folders prints per-stage latency **< 100 ms total**, an ROC with a recommended threshold at FAR ≤ 0.1%, and liveness scores separating a real photo from a phone-screen replay. **No UI work starts until signed off.** |
-| 2 | **Data model, migrations, core API** — all tables, settings registry + Redis resolver, admin auth (argon2id/TOTP/RBAC), audit middleware, consent model | 3–4 d | Migrations up/down clean; CRUD people/locations/groups/devices over HTTP; every mutation lands in `audit_log`; RBAC scoping proven by tests |
-| 3 | **Enrollment + gallery index** — upload/capture/live-capture, per-image validation, encrypted storage, `GalleryIndex` + pub/sub, duplicate detection, rebuild | 3 d | Enroll 20 people from a folder; index loads in < 2 s; a probe returns the right identity; duplicate enrollment blocked; enrolling without consent → 422 |
-| 4 | **Kiosk scan loop** — WS endpoint, device pairing, full pipeline, cooldowns, React kiosk with MediaPipe gating, PIN/QR fallback, offline queue, **TLS via Caddy internal CA** | 4–5 d | Two physical devices scan over `https://` on LAN, identity in **< 500 ms p95 client-measured**; cooldown suppresses a repeat; a printed photo denied in enforce mode; 30 s network loss queues and replays with no duplicates |
-| 5 | **Schedules + state machine** — shifts/rules/assignments with priority, calendar, exceptions, `expand_schedules`, pure `resolve()`, `mark_absences`, `close_open_records`, `recompute_range`, all three pairing strategies | 4 d | Table-driven suite (frozen time, ≥40 cases) covers on-time/late/early-out/absent/excused/holiday/incomplete/overnight/**both DST transitions**/multi-location/multi-period; `recompute_range` over a month is idempotent and preserves overrides |
-| 6 | **Admin dashboard + configurable UI** — SPA shell, live board WS, people/enrollment UI, device management, schema-driven settings, branding with live preview, manual overrides | 5 d | Changing logo/color/greeting updates a **running kiosk within 2 s with no redeploy**; changing `grace_in_minutes` changes a new scan's classification; a teacher account sees only their groups |
-| 7 | **Reports & export** — definitions, three renderers, async jobs, presets, expiry + audit | 3 d | Every report renders and exports to CSV/XLSX/PDF with branding; a 50k-row CSV streams under 200 MB RSS; every export audit-logged |
-| 8 | **Notifications** — rules engine, Jinja templates, SMTP (`aiosmtplib` + Mailpit in dev), pluggable SMS (Twilio first), outbox with retry/backoff/dedupe | 2–3 d | An absence produces **exactly one** guardian email within the offset; a late arrival sends a retraction; a provider outage retries without double-sending |
-| 9 | **Privacy & hardening** — envelope encryption + rotation runbook, retention jobs, erasure + DSAR, audit chain verify, CSP, `pip-audit`/`bun audit`, biometric policy page, DPIA, restore drill | 3 d | `pg_dump` has no readable biometric data; erasure clears DB + disk + live index while history survives pseudonymized; `/audit-log/verify` passes; restore-from-backup succeeds |
-| 10 | **Packaging & ops** — prod compose, healthchecks, Prometheus + Grafana, JSON logging with request IDs, backup cron, runbooks | 2 d | A clean machine goes `git clone` → working kiosk in under 30 min following only the written runbook |
+Availability was entirely unaddressed. Restart cost is three model loads plus a 51 MB decrypt-and-load; with one process and no standby, **every deploy or OOM is a site-wide outage** — and the only twenty minutes that matter at a school are the morning rush.
 
-**~6–7 weeks solo.** Phases 1 and 5 are where estimates break.
+- **Two scan processes** behind a shared queue from the start. They are stateless given the gallery; ~1.2 GB is nothing on the target hardware.
+- Rolling restart with readiness gated on `index_loaded_version`.
+- Kiosk behaviour on unavailability is specified, not left to an agent: return `SCAN_BACKEND_UNAVAILABLE` in < 500 ms and show "try again". **Never hang on a spinner, and never enqueue to the offline queue** — an unprocessed face is not a deferred event.
 
 ---
 
-## 10. Linear integration & parallel agent execution
+## 9. Testing
 
-**Setup** (one-time, requires your OAuth login — I can't do this unattended):
-```
-claude mcp add --transport http linear-server https://mcp.linear.app/mcp
-# then run /mcp in a Claude Code session to complete OAuth
-```
+`FaceEngine` is a Protocol and ~95% of the suite runs against `FakeFaceEngine` (§2.2), so everything but the model is ordinary deterministic software.
 
-**Backlog structure:** one Linear **project** ("Attendance Tracker v1"), one **milestone per phase** above, and issues at story grain (½–2 days each) so a subagent can own one end to end.
+- **L1** — matcher bands, cosine math, `business_date`, schedule resolution, the whole classifier. `hypothesis` properties: a normalized vector scores 1.0 against itself; adding an embedding never lowers that person's best score; **`resolve()` is idempotent for a fixed `as_of`**; classification is monotonic in arrival time.
+- **L2** — pipeline and API against the fake: cooldowns, limits, liveness branching, ambiguity, unknown-face lockout, WS protocol, event writing, resolution, notifications — zero images, perfect determinism.
+- **L3** — `@pytest.mark.models`, nightly. Embedding stability against checked-in golden `.npy` within `atol=1e-3` (catches onnxruntime upgrades and preprocessing drift, the failures that silently degrade accuracy without throwing). Accuracy regression `TAR@FAR=1e-3 ≥ baseline − 0.01`. **Liveness class-index assertion** (§2.2).
 
-Every issue carries:
-- **Labels** — `phase:N` · `area:{face-engine,backend,frontend-kiosk,frontend-admin,data,jobs,security,reports,notifications,infra,docs}` · `parallel-safe` or `serialized` · `needs-human` (OAuth, certs, real-face testing, model licensing)
-- **Blocked-by links** — the real dependency graph, so an agent can query "issues with no unresolved blockers in phase N" and claim work without collisions
-- **A file-ownership line** — the paths this issue may write. Two `parallel-safe` issues must never list overlapping paths; that invariant is what makes simultaneous subagents safe.
-- **Acceptance criteria** — copied from the phase "Done when" column, narrowed to the story, written as a runnable check
+**Fixtures:** synthetic 512-d vectors with controlled intra/inter-class structure for L1/L2 — the matcher needs no pixels. For L3, ~50–100 rights-cleared or synthetic images **outside the repo**; do not vendor LFW/CelebA/VGGFace2 (research-use-only or withdrawn, and checking real faces into a biometrics repo is what this app's own policy forbids).
 
-**Parallelism map** (what can genuinely run simultaneously):
-- Phase 1 is **serialized and blocking** — everything downstream depends on its threshold and latency numbers.
-- Phase 2 fans out wide: each table group, auth, settings registry, and audit middleware are near-independent once the migration skeleton exists.
-- Phases 3 + 5 can run concurrently (enrollment vs. scheduling touch disjoint modules).
-- Phase 4 backend and Phase 4 kiosk frontend split cleanly across the WS message contract — **write that contract as a shared TypeScript + Pydantic schema in the first issue of the phase**, then both sides proceed in parallel against it.
-- Phases 6, 7, 8 are largely independent of each other once Phase 5 lands.
+**Determinism traps:** assert on `.npy`, never re-decoded JPEG; pin one resize path (`cv2` ≠ `PIL` at the same nominal interpolation); `intra_op_num_threads=1` in tests only; `time-machine` with **at least one non-UTC location timezone** — a UTC-only suite will not catch timezone bugs.
 
-**Bootstrapping the backlog:** a first execution session creates the Linear issues from this plan via the MCP tools, then subsequent sessions dispatch subagents (the `developers` / `design` / `qa` teams installed from `agentic-company-os` in Phase 0) against ready issues.
+**E2E:** Chromium `--use-fake-device-for-media-capture --use-file-for-fake-video-capture=fixtures/alice.y4m`. Y4M only, uncompressed, Chromium-only; the file is re-read continuously so swapping it mid-test switches the feed.
+
+**Load:** 20 kiosks × 1 scan/3 s against a 5,000-person gallery; p95 < 500 ms, **no cooldown leakage across workers**.
 
 ---
 
-## Critical files (create in this order)
+## 10. Phases
 
-| Path (under repo root) | Role |
+| # | Phase | Done when |
+|---|---|---|
+| 0 | **Scaffold** — uv @ **3.13**, compose (PG17 **no pgvector**, Redis with both policies), Caddy, toolchain, bun workspace | `docker compose up` reaches PG + Redis; `uvicorn` serves `/health` |
+| **0.5** | **CONTRACTS — blocks all parallel work.** Everything in §2: `SETTINGS_SCHEMA`, `FaceEngine` Protocol + `FakeFaceEngine`, WS contract with generated TS, error taxonomy, natural keys, classification decision table, skeleton tree, `docs/ownership.toml` + CI check, migration-ownership rule, shared fixture factories. **Plus the §8 topology decision.** | `make protocol` regenerates TS with no diff; the ownership CI check fails on a deliberate violation; two agents given adjacent issues have zero path overlap |
+| 1 | **Face engine spike (CLI only)** + **hallway test** | Latency, ROC at FAR ≤ 0.1% **extrapolated to N=5000**, liveness separating real/print/replay — **and** the hallway test below |
+| 2 | Data model, migrations, core API, auth, audit, consent | Migrations up/down clean; every mutation audited; RBAC proven at the repository layer |
+| 3 | Enrollment + gallery index (with versioned consistency, §3.5) | 20 people enrolled; index loads < 2 s; duplicate blocked; no-consent → 422; **index divergence alarms** |
+| 4 | Kiosk scan loop, device auth, PIN/QR, offline queue, TLS | < 500 ms p95 on LAN; printed photo denied; 30 s outage replays to exactly N records **with correct backdated timestamps** |
+| 5 | Schedules + state machine | ≥40 cases incl. both DST transitions and overnight; **truncate `attendance_records` and rebuild → identical, overrides intact** |
+| 6 | Admin dashboard + configurable UI | Branding change reaches a running kiosk in < 2 s, no redeploy |
+| 7 | Reports & export | 50k-row CSV under 200 MB RSS; every export audited |
+| 8 | Notifications | Exactly one guardian message per absence; retraction on late arrival; outage retries never double-send |
+| 9 | Privacy & hardening **+ model-swap path** | **Restore on a KEK-less machine → gallery cannot load**; erasure clears DB, disk, and live index; audit chain verifies and its head is exported off-box |
+| 10 | Packaging & ops | Clean machine → working kiosk in < 30 min from the runbook alone |
+
+### [FIX-E] Add a hallway test to Phase 1
+
+The Phase 1 gate as written proves latency and ROC on curated images — the *least* likely thing to fail on an M5 with good input. The risks that actually kill this project are enrollment quality from real admin captures, backlit doorway lighting, and a client gate tuned so tightly nobody gets through. None of those surface before Phase 4, and throughput not until Phase 10.
+
+**Half a day, before sign-off:** a laptop webcam at the real mounting height in the real lighting, ~20 volunteers enrolled through the intended 5-pose flow, ~200 walk-up probes, measuring in-situ FRR and time-to-recognition. No UI, no DB, no WS — the existing CLI in a loop. That falsifies "people in this building can be recognized reliably" weeks before any UI exists. Concurrency can stay in Phase 10; it is an engineering problem with a known fix (§8). Field accuracy is the one with no fix.
+
+### [FIX-D5] Model-swap path is now a Phase 9 deliverable
+
+Retaining encrypted originals is justified entirely by "swapping the model is a background job" — yet that job appeared in no phase in revision 1, while `buffalo_l` licensing was named the #1 risk. The mitigation for the top risk was the least-specified thing in the plan. Needs: `model_version` partitioning on the index, a dual-index read path during migration, the re-embed job, and an upgrade runbook covering migration + model version + re-embed ordering.
+
+### Cut or deferred
+
+- **pgvector** — cut (§1).
+- **Device-scope settings overrides** — deferred. Four-level resolution plus per-device JSONB plus a schema-driven generator plus live preview is a lot of Phase 6 for one organization; `org > code default` plus a small device allowlist covers nearly all real cases.
+- **Second liveness model on the hot path** — run one in v1 while shipping at `monitor`; keep the second behind the Protocol.
+
+---
+
+## 11. Critical files
+
+| Path | Role |
 |---|---|
-| `backend/app/face/engine.py` | `FaceEngine` Protocol + ONNX impl (SCRFD decode, ArcFace align/embed, MiniFASNet liveness). **Everything depends on this interface; model path + preprocessing are config, not code** — that's what makes the licensing swap cheap. |
-| `backend/app/face/gallery.py` | In-memory NumPy `GalleryIndex`, matcher, threshold/margin decision, Redis pub/sub invalidation |
-| `backend/app/models/{people,attendance,scheduling,settings}.py` | SQLAlchemy schema. The events / expected / records split is the load-bearing decision. |
-| `backend/app/attendance/resolver.py` | Pure idempotent `resolve(person_id, business_date)` + pairing strategies |
-| `backend/app/api/ws_kiosk.py` | WS scan endpoint — pipeline, cooldown, rate limiting, event writing on the latency-critical path |
-| `backend/app/settings/registry.py` | Typed `SETTINGS_SCHEMA` — drives validation *and* admin UI generation |
-| `frontend/apps/kiosk/src/scan/useScanLoop.ts` | MediaPipe gating, stability gate, throttling, WS client |
-| `models/` + `models/checksums.txt` | Vendored ONNX. **Never download at runtime** — first-boot GitHub fetches are a guaranteed field failure. |
-| `CLAUDE.md` | Fill the existing template: stack, commands, the buffalo_l licensing constraint, "never log or return raw embeddings", "never store successful scan frames" |
+| `backend/app/settings/registry.py` | `SETTINGS_SCHEMA` (§2.1) — highest-leverage artifact; six phases read it |
+| `backend/app/face/protocol.py` | `FaceEngine` + `FakeFaceEngine` (§2.2) |
+| `backend/app/face/liveness.py` | MiniFASNet — **the corrected preprocessing (§0 #1–3)** |
+| `backend/app/face/gallery.py` | NumPy index, matcher, versioned consistency (§3.5) |
+| `backend/app/api/schemas/kiosk.py` | WS contract, source of generated TS (§2.3) |
+| `backend/app/errors.py` | Error taxonomy (§2.4) |
+| `backend/app/models/attendance.py` | events / expected / records / **overrides** (§2.5) |
+| `backend/app/attendance/resolver.py` | `resolve(..., as_of)` — sole writer (§5.1–5.3) |
+| `backend/app/api/ws_kiosk.py` | Latency-critical path |
+| `frontend/apps/kiosk/src/scan/useScanLoop.ts` | Gating, stability gate, throttle, WS client |
+| `docs/ownership.toml` | Issue → path globs, CI-enforced (§2.7) |
+| `models/checksums.txt` | Vendored ONNX; never fetch at runtime |
 
 ---
 
-## Verification
+## 12. Verification
 
-**Phase 1 gate (the one that matters most)** — before any UI exists:
+**Phase 0.5 gate:** `make protocol` regenerates TypeScript with no diff; the ownership CI check fails on a deliberate cross-boundary edit; `SETTINGS_SCHEMA` round-trips through the resolver at all three scopes.
+
+**Phase 1 gate (blocking):**
 ```bash
-cd backend && uv run python -m app.face.bench   --iterations 100
-cd backend && uv run python -m app.face.evaluate --enroll fixtures/enroll --probe fixtures/probe
+uv run python -m app.face.bench    --iterations 100
+uv run python -m app.face.evaluate --enroll fixtures/enroll --probe fixtures/probe --extrapolate-to 5000
+uv run python -m app.face.liveness_check --live fixtures/live --spoof fixtures/spoof
 ```
-Expect: per-stage p50/p95 with total < 100 ms on the M5; an FAR/FRR table with a recommended threshold at FAR ≤ 0.1%; liveness scores separating a real photo from a replay of it. **If total latency exceeds 100 ms**, tune `det_size` and `intra_op_num_threads` and try the int8-quantized `w600k_r50` before proceeding.
+Plus the hallway test results in `docs/phase1-results.md`, and the `buffalo_l` vs Apache-2.0 accuracy delta recorded (expect a large CFP-FP gap, §0 #7).
 
-**Per-phase:** `make check` → `ruff` + `mypy --strict` + `pytest` (fake engine, fast) + migration up/down round-trip. Model regression suite (`pytest -m models`) nightly.
+**Per phase:** `make check` = ruff + mypy --strict + pytest + migration up/down round-trip. `pytest -m models` nightly.
 
-**End-to-end, from Phase 4:**
-1. `docker compose up`, `make seed` → admin user + one location + one device
-2. Enroll yourself through all three paths — upload, take-a-picture, guided live capture
-3. Open the kiosk on a second device over `https://` on the LAN, scan, confirm identity in < 500 ms and a record in the admin live board
-4. Hold a **printed photo and a phone screen** to the camera — both denied in enforce mode
-5. Change logo, primary color, and greeting in admin → kiosk updates within 2 s, no redeploy
-6. Change `grace_in_minutes` → a new scan reclassifies on-time ↔ late
-7. Pull the network for 30 s, scan 3×, restore → exactly 3 records, no duplicates
-8. Export the daily register to CSV/XLSX/PDF; confirm branding, and an audit row per export
-9. `POST /people/{id}/erase` → embeddings gone from DB, disk, and the live index; attendance history survives pseudonymized
-10. `pg_dump` and grep — no readable biometric data
+**End-to-end, from Phase 4** — additions to revision 1 in bold:
+1. `docker compose up`, `make seed`
+2. Enroll through all three paths
+3. Scan from a second device over `https://` on LAN — identity < 500 ms, record on the live board
+4. Printed photo and phone screen both denied in enforce mode
+5. Branding change → running kiosk updates in < 2 s
+6. `attendance.grace_in_minutes` change → new scan reclassifies
+7. Network out 30 s, scan 3× → exactly 3 records, **timestamps backdated to capture time, not reconnect time**
+8. **Scan the same person at two locations within 10 s → `LOCATION_CONFLICT`, muster shows one location**
+9. **Kill a scan process mid-burst → kiosk shows "try again" in < 500 ms, no phantom record**
+10. **Truncate `attendance_records`, run `recompute_range` over a month → identical, manual overrides intact**
+11. Export the daily register to CSV/XLSX/PDF; audit row per export
+12. `POST /people/{id}/erase` → **blocks until the live index converges**; history survives pseudonymized
+13. **Restore a backup on a machine without the KEK → the gallery cannot load**
 
-**Playwright E2E** (fake Y4M camera) and the k6 load scenario (20 kiosks × 5,000-person gallery, p95 < 500 ms) run before each release.
+Playwright E2E (fake Y4M camera) and the k6 load scenario run before each release.
