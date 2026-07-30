@@ -17,6 +17,16 @@ class QueueBoundary(str, Enum):
     SHARED_QUEUE = "shared_queue"
 
 
+class ReadinessGate(str, Enum):
+    INDEX_LOADED_VERSION_AT_LEAST_REQUIRED_GALLERY_VERSION = (
+        "index_loaded_version_at_least_required_gallery_version"
+    )
+
+
+class OnnxThreadingPolicy(str, Enum):
+    EXPLICIT_RUNTIME_CONFIG = "explicit_runtime_config"
+
+
 @dataclass(frozen=True)
 class RuntimeProcessSpec:
     role: ProcessRole
@@ -33,7 +43,8 @@ class ScanRuntimeTopology:
     unavailable_policy: ScanUnavailablePolicy
     unavailable_timeout_ms: int
     estimated_model_rss_mb_per_process: int
-    readiness_requires_gallery_convergence: bool
+    readiness_gate: ReadinessGate
+    onnx_threading_policy: OnnxThreadingPolicy
     load_models_once_per_process: bool
 
     @property
@@ -56,9 +67,10 @@ DEFAULT_SCAN_TOPOLOGY = ScanRuntimeTopology(
     ),
     queue_boundary=QueueBoundary.SHARED_QUEUE,
     unavailable_policy=ScanUnavailablePolicy.RETURN_ERROR_FAST,
-    unavailable_timeout_ms=500,
+    unavailable_timeout_ms=499,
     estimated_model_rss_mb_per_process=600,
-    readiness_requires_gallery_convergence=True,
+    readiness_gate=ReadinessGate.INDEX_LOADED_VERSION_AT_LEAST_REQUIRED_GALLERY_VERSION,
+    onnx_threading_policy=OnnxThreadingPolicy.EXPLICIT_RUNTIME_CONFIG,
     load_models_once_per_process=True,
 )
 
@@ -74,9 +86,14 @@ def assert_topology_contract(topology: ScanRuntimeTopology = DEFAULT_SCAN_TOPOLO
         raise ValueError("scan work must cross the shared queue boundary")
     if topology.unavailable_policy is not ScanUnavailablePolicy.RETURN_ERROR_FAST:
         raise ValueError("kiosks must receive SCAN_BACKEND_UNAVAILABLE quickly")
-    if topology.unavailable_timeout_ms > 500:
+    if topology.unavailable_timeout_ms >= 500:
         raise ValueError("unavailable scan backend response must be under 500 ms")
-    if not topology.readiness_requires_gallery_convergence:
-        raise ValueError("readiness must be gated on gallery/index convergence")
+    if (
+        topology.readiness_gate
+        is not ReadinessGate.INDEX_LOADED_VERSION_AT_LEAST_REQUIRED_GALLERY_VERSION
+    ):
+        raise ValueError("readiness must require index_loaded_version >= required_gallery_version")
+    if topology.onnx_threading_policy is not OnnxThreadingPolicy.EXPLICIT_RUNTIME_CONFIG:
+        raise ValueError("ONNX thread counts must be explicit runtime configuration")
     if not topology.load_models_once_per_process:
         raise ValueError("models must be loaded once per scan process, never per request")

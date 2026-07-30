@@ -49,16 +49,19 @@ A scan process is ready only when:
 3. `index_loaded_version >= required_gallery_version`,
 4. settings have been loaded at a known `settings_version`.
 
-During deploy or startup, the API must return `SCAN_BACKEND_UNAVAILABLE` within
-500 ms when no scan process is ready. Do not leave the kiosk on an indefinite
-spinner, and do not enqueue unprocessed faces to the offline queue; an
-unprocessed face is not a deferred attendance event.
+During deploy or startup, the API must return `SCAN_BACKEND_UNAVAILABLE` in
+less than 500 ms when no scan process is ready. The importable contract encodes
+this as a 499 ms upper deadline so tests cannot accidentally permit an exact
+500 ms response. Do not leave the kiosk on an indefinite spinner, and do not
+enqueue unprocessed faces to the offline queue; an unprocessed face is not a
+deferred attendance event.
 
 ## Threading
 
 Tests use deterministic ONNX settings (`intra_op_num_threads=1`). Production is
 explicitly configured and may differ. Thread counts are runtime configuration,
-not call-site constants.
+not call-site constants; the runtime contract requires an explicit ONNX
+threading policy before model code lands.
 
 ## Model loading invariant
 
