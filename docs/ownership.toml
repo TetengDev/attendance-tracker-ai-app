@@ -6,6 +6,8 @@ paths = [
   "backend/app/settings/**",
   "backend/app/face/**",
   "backend/app/api/**",
+  "backend/app/attendance/**",
+  "backend/app/db/**",
   "backend/__init__.py",
   "backend/app/__init__.py",
   "backend/tests/**",
