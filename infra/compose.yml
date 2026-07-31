@@ -27,6 +27,8 @@ services:
       - redis-server
       - --appendonly
       - "no"
+      - --maxmemory
+      - ${REDIS_CACHE_MAXMEMORY:-128mb}
       - --maxmemory-policy
       - volatile-ttl
       - --save
@@ -48,6 +50,8 @@ services:
       - "yes"
       - --appendfsync
       - everysec
+      - --maxmemory
+      - ${REDIS_STORE_MAXMEMORY:-256mb}
       - --maxmemory-policy
       - noeviction
     ports:
