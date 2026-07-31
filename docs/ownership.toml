@@ -52,6 +52,14 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-100"
+paths = [
+  ".github/workflows/cleanup-merged-branches.yml",
+  "CLAUDE.md",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-11"
 paths = [
   "CLAUDE.md",

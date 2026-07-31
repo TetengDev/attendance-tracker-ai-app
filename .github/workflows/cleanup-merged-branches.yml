@@ -1,0 +1,83 @@
+name: Cleanup merged branches
+
+on:
+  schedule:
+    # Asia/Manila is UTC+8: 21:00 UTC = 5:00 AM, 07:00 UTC = 3:00 PM.
+    - cron: "0 21 * * *"
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List branches without deleting them"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: Delete merged remote branches
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete unprotected branches already merged into default
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          default_branch="$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq '.defaultBranchRef.name')"
+          git fetch origin "$default_branch" --prune
+
+          echo "Default branch: $default_branch"
+          echo "Dry run: ${DRY_RUN:-false}"
+
+          mapfile -t branch_names < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" \
+              --jq '.[] | select(.protected == false) | .name'
+          )
+
+          deleted_count=0
+          skipped_count=0
+
+          for branch_name in "${branch_names[@]}"; do
+            case "$branch_name" in
+              "$default_branch"|main|master|develop|development|staging|production|release/*)
+                echo "Skipping reserved branch: $branch_name"
+                skipped_count=$((skipped_count + 1))
+                continue
+                ;;
+            esac
+
+            if ! git ls-remote --exit-code --heads origin "$branch_name" >/dev/null; then
+              echo "Skipping missing branch: $branch_name"
+              skipped_count=$((skipped_count + 1))
+              continue
+            fi
+
+            git fetch origin "refs/heads/$branch_name:refs/remotes/origin/$branch_name" --depth=1
+
+            if git merge-base --is-ancestor "origin/$branch_name" "origin/$default_branch"; then
+              if [ "${DRY_RUN:-false}" = "true" ]; then
+                echo "Would delete merged branch: $branch_name"
+              else
+                echo "Deleting merged branch: $branch_name"
+                git push origin --delete "$branch_name"
+              fi
+              deleted_count=$((deleted_count + 1))
+            else
+              echo "Skipping unmerged branch: $branch_name"
+              skipped_count=$((skipped_count + 1))
+            fi
+          done
+
+          echo "Merged branch candidates: $deleted_count"
+          echo "Skipped branches: $skipped_count"
