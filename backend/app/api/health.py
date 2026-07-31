@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.config import Settings, get_settings
+from backend.app.settings.resolver import DEFAULT_SETTINGS_STORE, settings_version_for_health
 
 router = APIRouter(tags=["health"])
 
@@ -35,7 +36,11 @@ def deep_health(settings: Annotated[Settings, Depends(get_settings)]) -> dict[st
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"status": "unhealthy", "checks": checks},
         )
-    return {"status": "ok", "checks": checks}
+    return {
+        "status": "ok",
+        "checks": checks,
+        "settings_version": settings_version_for_health(DEFAULT_SETTINGS_STORE),
+    }
 
 
 def _target_from_url(name: str, url: str) -> ReachabilityTarget:
