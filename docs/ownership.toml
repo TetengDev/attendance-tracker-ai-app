@@ -77,6 +77,18 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-10"
+paths = [
+  "frontend/package.json",
+  "frontend/bun.lock",
+  "frontend/tsconfig.base.json",
+  "frontend/apps/kiosk/**",
+  "frontend/apps/admin/**",
+  "frontend/packages/**",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
