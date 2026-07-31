@@ -45,6 +45,13 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-99"
+paths = [
+  "CLAUDE.md",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-11"
 paths = [
   "CLAUDE.md",
