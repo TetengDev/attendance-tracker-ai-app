@@ -107,6 +107,7 @@ Known human-blocked items: TLS certs for LAN kiosks (`getUserMedia` needs a secu
 - When a change affects frontend behavior, backend-visible behavior, or adds a new feature, attach lightweight visual proof to the PR whenever practical: screenshots for static states and/or short video recordings for flows. Keep files small enough for review, avoid sensitive data, and write captions in client/QA/business language that state exactly what the evidence verifies.
 - Before a human review, run an independent PR-reviewer agent pass. Fix blocking or low-risk review findings directly on the PR branch before handing off. If a finding is valid but depends on future implementation, broader measurement, or materially larger scope, create a Linear bug/backlog item, attach the PR link, relate it to the current Linear issue/user story, and mention the deferral in a PR comment.
 - Commit incrementally as related, self-contained changes so cherry-pick, merge, and rebase stay easy. Keep commits atomic, one concern each, and avoid bundling unrelated implementation, test, docs, or review-fix changes into the same commit. Never commit or push unless asked.
+- Clean up stale merged branches on a schedule. The repository workflow runs twice daily at 5:00 AM and 3:00 PM Asia/Manila, deleting only unprotected remote branches that are already merged into the default branch. Manual runs should use dry-run mode first when auditing branch cleanup behavior.
 
 ## Key Files Reference
 
