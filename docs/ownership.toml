@@ -45,6 +45,15 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-11"
+paths = [
+  "CLAUDE.md",
+  "README.md",
+  "docs/repository-map.md",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
