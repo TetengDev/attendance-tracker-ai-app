@@ -107,6 +107,19 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-20"
+paths = [
+  "backend/alembic/**",
+  "backend/alembic.ini",
+  "backend/app/db/base.py",
+  "backend/app/db/session.py",
+  "backend/tests/test_db_contracts.py",
+  "pyproject.toml",
+  "uv.lock",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 

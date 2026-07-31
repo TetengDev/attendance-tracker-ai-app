@@ -5,11 +5,15 @@ description = "Self-hosted face-recognition attendance tracker."
 readme = "CLAUDE.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "alembic>=1.18.5",
+  "asyncpg>=0.31.0",
   "cryptography>=49.0.0",
   "fastapi>=0.141.1",
+  "greenlet>=3.5.4",
   "numpy>=2.2",
   "pydantic>=2.10",
   "pydantic-settings>=2.14.2",
+  "sqlalchemy>=2.0.51",
   "uvicorn>=0.52.0",
 ]
 
