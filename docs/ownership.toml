@@ -137,6 +137,14 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-23"
+paths = [
+  "backend/app/models/biometrics.py",
+  "backend/tests/test_models_biometrics.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
