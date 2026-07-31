@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -11,6 +12,7 @@ from typing import NamedTuple
 KEY_BYTES = 32
 DEFAULT_KEY_ENV = "BIOMETRIC_KEK"
 KEY_PREFIX = "kek."
+BASE64URL_RE = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
 
 
 class KeyConfigurationError(RuntimeError):
@@ -26,7 +28,7 @@ class KeyEncryptionKey:
 
     def __post_init__(self) -> None:
         if not self.key_id.strip():
-            raise KeyConfigurationError("BIOMETRIC_KEK_ID must not be empty")
+            raise KeyConfigurationError("biometric KEK id must not be empty")
         if len(self.material) != KEY_BYTES:
             raise KeyConfigurationError("BIOMETRIC_KEK must decode to exactly 32 bytes")
 
@@ -52,6 +54,8 @@ def parse_kek(value: str) -> ParsedKey:
 
     if not encoded_key:
         raise KeyConfigurationError("BIOMETRIC_KEK material must not be empty")
+    if not BASE64URL_RE.fullmatch(encoded_key):
+        raise KeyConfigurationError("BIOMETRIC_KEK material must be unpadded base64url")
 
     try:
         padded = encoded_key + "=" * (-len(encoded_key) % 4)

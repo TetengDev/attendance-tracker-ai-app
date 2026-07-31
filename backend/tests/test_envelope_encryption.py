@@ -47,6 +47,9 @@ def test_parse_kek_requires_versioned_32_byte_base64url_value() -> None:
     with pytest.raises(KeyConfigurationError):
         parse_kek(f" kek.v1:{_encoded_key(7)}")
 
+    with pytest.raises(KeyConfigurationError):
+        parse_kek("kek.v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+A")
+
 
 def test_crypto_keys_import_fails_loudly_without_biometric_kek() -> None:
     env = os.environ.copy()
@@ -154,5 +157,5 @@ def test_rewrap_rotates_dek_without_touching_payload_ciphertext() -> None:
         embedding,
     )
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyConfigurationError):
         decrypt_embedding(rotated, aad=aad, keyring=keyring_for(old_key))

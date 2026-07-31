@@ -7,7 +7,12 @@ from dataclasses import dataclass, replace
 import numpy as np
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from backend.app.crypto.keys import ACTIVE_KEK, ACTIVE_KEYRING, KeyEncryptionKey
+from backend.app.crypto.keys import (
+    ACTIVE_KEK,
+    ACTIVE_KEYRING,
+    KeyConfigurationError,
+    KeyEncryptionKey,
+)
 
 AES_GCM_NONCE_BYTES = 12
 DATA_KEY_BYTES = 32
@@ -123,7 +128,10 @@ def _unwrap_dek(
     *,
     keyring: Mapping[str, KeyEncryptionKey],
 ) -> bytes:
-    kek = keyring[payload.encryption_key_id]
+    try:
+        kek = keyring[payload.encryption_key_id]
+    except KeyError as exc:
+        raise KeyConfigurationError("KEK not available for encrypted payload") from exc
     return AESGCM(kek.material).decrypt(
         payload.dek_nonce,
         payload.wrapped_dek,
