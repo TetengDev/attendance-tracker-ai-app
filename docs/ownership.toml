@@ -96,6 +96,16 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-21"
+paths = [
+  "backend/app/crypto/**",
+  "backend/tests/test_envelope_encryption.py",
+  "pyproject.toml",
+  "uv.lock",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
