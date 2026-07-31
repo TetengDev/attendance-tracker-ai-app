@@ -53,6 +53,24 @@ def test_deep_health_returns_503_when_dependency_unreachable(monkeypatch: Monkey
         }
 
 
+def test_deep_health_exposes_settings_version(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/attendance")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("BIOMETRIC_KEK", "test-kek")
+    monkeypatch.setattr("backend.app.api.health._is_reachable", lambda _target: True)
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/health/deep")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "ok",
+            "checks": {"postgres": True, "redis": True},
+            "settings_version": 1,
+        }
+
+
 def test_health_url_target_parsing_defaults() -> None:
     postgres = _target_from_url("postgres", "postgresql+asyncpg://user:pass@db/attendance")
     redis = _target_from_url("redis", "redis://cache/0")
