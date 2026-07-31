@@ -54,6 +54,15 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-8"
+paths = [
+  "Makefile",
+  ".pre-commit-config.yaml",
+  ".github/workflows/ci.yml",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
