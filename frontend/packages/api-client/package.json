@@ -1,0 +1,13 @@
+{
+  "name": "@attendance/api-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}
