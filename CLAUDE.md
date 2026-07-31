@@ -100,7 +100,7 @@ Known human-blocked items: TLS certs for LAN kiosks (`getUserMedia` needs a secu
 ## Agent Workflow
 
 - **Plan before executing.** Ask when two readings of a request lead to materially different work.
-- Work is tracked as **Linear issues** (team `TEN` / Tengdev), executed by parallel subagents.
+- Work is tracked as **Linear issues** (team `TEN` / Tengdev), executed by parallel subagents. When starting work on an issue, assign it to the human owner (`me` / Lester Bryan Ilao) and move it to `In Progress`.
 - Installed teams: `/development` (solutions-architect, tech-lead, senior-software-engineer, qa-engineer) · `/design` · `/security` (**use on anything touching biometrics, auth, or crypto**) · `/devops`.
 - Run `make check` before reporting work complete. If tests fail, say so with the output.
 - Every PR must be attached to its counterpart Linear issue/user story before review. If one PR covers multiple issues, attach the PR link to each issue and mention the covered issue keys in the PR body. Move issues to `In Review` when the PR opens, and only move them to `Done` after the PR is approved or merged.
