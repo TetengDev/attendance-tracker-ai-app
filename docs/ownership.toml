@@ -128,6 +128,15 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-22"
+paths = [
+  "backend/app/models/__init__.py",
+  "backend/app/models/people.py",
+  "backend/tests/test_models_people.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
