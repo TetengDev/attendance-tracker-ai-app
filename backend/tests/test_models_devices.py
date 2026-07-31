@@ -78,12 +78,35 @@ def test_fixed_device_requires_location_application_guard() -> None:
     with pytest.raises(ValueError, match="fixed devices require a location"):
         Device(
             mode=DeviceMode.FIXED,
-            location_id=None,
             form_factor=DeviceFormFactor.TABLET,
             direction=DeviceDirection.IN,
             token_hash="hash",
             token_display_prefix="tok_",
         )
+
+    fixed = Device(
+        mode=DeviceMode.FIXED,
+        location_id=UUID("00000000-0000-0000-0000-000000000001"),
+        form_factor=DeviceFormFactor.TABLET,
+        direction=DeviceDirection.IN,
+        token_hash="hash",
+        token_display_prefix="tok_",
+    )
+
+    assert fixed.location_id == UUID("00000000-0000-0000-0000-000000000001")
+
+
+def test_roaming_device_cannot_be_mutated_to_fixed_without_location() -> None:
+    device = Device(
+        mode=DeviceMode.ROAMING,
+        form_factor=DeviceFormFactor.PHONE,
+        direction=DeviceDirection.BIDIRECTIONAL,
+        token_hash="hash",
+        token_display_prefix="tok_",
+    )
+
+    with pytest.raises(ValueError, match="fixed devices require a location"):
+        device.mode = DeviceMode.FIXED
 
 
 def test_device_heartbeat_tracks_mobile_health_and_retention() -> None:

@@ -140,11 +140,28 @@ class Device(Base):
         cascade="all, delete-orphan",
     )
 
+    def __init__(self, **kwargs: object) -> None:
+        object.__setattr__(self, "_allow_incomplete_device_state", True)
+        super().__init__(**kwargs)
+        object.__setattr__(self, "_allow_incomplete_device_state", False)
+        self.require_valid_location_mode(self.mode, self.location_id)
+
     @validates("location_id", "mode")
-    def validate_location_mode(self, _key: str, _value: object) -> object:
-        if self.mode == DeviceMode.FIXED and self.location_id is None:
+    def validate_location_mode(self, key: str, value: DeviceMode | UUID | None) -> DeviceMode | UUID | None:
+        if getattr(self, "_allow_incomplete_device_state", False):
+            return value
+        candidate_mode = value if key == "mode" else self.mode
+        candidate_location_id = value if key == "location_id" else self.location_id
+        self.require_valid_location_mode(candidate_mode, candidate_location_id)
+        return value
+
+    @staticmethod
+    def require_valid_location_mode(
+        mode: DeviceMode | UUID | None,
+        location_id: DeviceMode | UUID | None,
+    ) -> None:
+        if mode == DeviceMode.FIXED and location_id is None:
             raise ValueError("fixed devices require a location")
-        return _value
 
 
 class DeviceHeartbeat(Base):
