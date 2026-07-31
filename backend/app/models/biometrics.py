@@ -228,4 +228,3 @@ def require_active_biometric_consent(
 
 def enrollment_complete(active_embeddings_count: int) -> bool:
     return active_embeddings_count >= MIN_ACTIVE_EMBEDDINGS_FOR_ENROLLMENT
-
