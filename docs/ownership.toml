@@ -161,6 +161,14 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-26"
+paths = [
+  "backend/app/models/attendance.py",
+  "backend/tests/test_models_attendance.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
