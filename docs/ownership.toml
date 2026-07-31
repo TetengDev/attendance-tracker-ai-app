@@ -69,6 +69,8 @@ paths = [
   "backend/app/config.py",
   "backend/app/api/health.py",
   "backend/tests/test_health_api.py",
+  "app/__init__.py",
+  "app/main.py",
   "pyproject.toml",
   "uv.lock",
   "docs/ownership.toml",

@@ -9,6 +9,12 @@ from backend.app.config import Settings, get_settings
 from backend.app.main import create_app
 
 
+def test_root_app_import_path_matches_uvicorn_command() -> None:
+    from app.main import app
+
+    assert app.title == "Attendance Tracker"
+
+
 def test_settings_requires_biometric_kek() -> None:
     try:
         Settings(  # type: ignore[call-arg]
