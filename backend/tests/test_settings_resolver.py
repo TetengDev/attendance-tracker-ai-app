@@ -86,6 +86,13 @@ def test_unknown_setting_key_is_rejected() -> None:
         resolve_setting("does.not.exist", [], CONTEXT)
 
 
+def test_resolve_all_rejects_unknown_persisted_setting_rows() -> None:
+    rows = [setting("invented.key", SettingScope.ORG, None, "oops", version=2)]
+
+    with pytest.raises(SettingValidationError, match="unknown setting key"):
+        resolve_settings(rows, CONTEXT, version=2)
+
+
 def test_resolve_all_returns_schema_defaults_and_durable_version() -> None:
     rows = [setting("kiosk.greeting_text", SettingScope.ORG, None, "Hello", version=6)]
 

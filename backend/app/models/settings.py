@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -31,7 +31,26 @@ class Setting(Base):
             "scope = 'org' OR scope_id IS NOT NULL",
             name="non_org_scope_requires_scope_id",
         ),
+        CheckConstraint(
+            "scope != 'org' OR scope_id IS NULL",
+            name="org_scope_forbids_scope_id",
+        ),
         CheckConstraint("version > 0", name="version_positive"),
+        Index(
+            "uq_settings_org_key_scope",
+            "key",
+            "scope",
+            unique=True,
+            postgresql_where=text("scope = 'org'"),
+        ),
+        Index(
+            "uq_settings_scoped_key_scope_scope_id",
+            "key",
+            "scope",
+            "scope_id",
+            unique=True,
+            postgresql_where=text("scope IN ('location', 'device')"),
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()

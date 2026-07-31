@@ -221,6 +221,7 @@ def resolve_settings(
     version: int = 1,
 ) -> ResolvedSettings:
     rows = tuple(values)
+    _validate_rows(rows)
     resolved = {
         key: resolve_setting(key, rows, context, version=version).value
         for key in SETTINGS_SCHEMA
@@ -297,3 +298,8 @@ def _validate_rows_for_key(key: str, values: Iterable[SettingValue]) -> None:
     for value in values:
         if value.key == key:
             validate_setting_for_scope(value.key, value.value, value.scope, value.scope_id)
+
+
+def _validate_rows(values: Iterable[SettingValue]) -> None:
+    for value in values:
+        validate_setting_for_scope(value.key, value.value, value.scope, value.scope_id)
