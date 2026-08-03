@@ -69,6 +69,14 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-102"
+paths = [
+  "backend/alembic/**",
+  "backend/app/models/settings.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-11"
 paths = [
   "CLAUDE.md",

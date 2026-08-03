@@ -69,6 +69,16 @@ class SettingsVersion(Base):
         CheckConstraint("current_version > 0", name="current_version_positive"),
     )
 
-    namespace: Mapped[str] = mapped_column(String(64), primary_key=True, default="global")
-    current_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
+    namespace: Mapped[str] = mapped_column(
+        String(64),
+        primary_key=True,
+        default="global",
+        server_default="global",
+    )
+    current_version: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
     updated_at: Mapped[datetime] = updated_at_column()
