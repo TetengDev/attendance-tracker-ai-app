@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
@@ -13,11 +16,13 @@ from backend.app.api.common import RequestActor, authenticated_admin_user
 from backend.app.api.groups import get_groups_service
 from backend.app.api.people import get_people_service
 from backend.app.api.people_merge import get_people_merge_service
+from backend.app.api.sessions import get_sessions_service
 from backend.app.config import get_settings
 from backend.app.db.session import get_session
 from backend.app.main import create_app
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.people import Group, GroupKind, Person, PersonKind
+from backend.app.models.sessions import ScanSession, ScanSessionEndReason, ScanSessionLocationSource
 from backend.app.people.merge import PersonMergeSummary
 
 
@@ -79,6 +84,8 @@ def test_core_crud_routers_are_registered(monkeypatch: MonkeyPatch) -> None:
 
     assert "/api/people" in paths
     assert "/api/people/{survivor_id}/merge" in paths
+    assert "/api/sessions" in paths
+    assert "/api/sessions/{session_id}/end" in paths
     assert "/api/groups" in paths
     assert "/api/locations" in paths
     assert "/api/devices" in paths
@@ -280,6 +287,151 @@ def test_person_merge_endpoint_audits_and_commits(monkeypatch: MonkeyPatch) -> N
     assert response.json()["gallery_version"] == 9
     assert audit_calls[0]["action"] == "person.merge"
     assert audit_calls[0]["entity_id"] == str(survivor_id)
+
+
+def test_create_scan_session_rejects_unknown_fields_before_service_call(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    with TestClient(_authenticated_app(monkeypatch, _admin_user(AdminRole.ADMIN))) as client:
+        response = client.post(
+            "/api/sessions",
+            json={
+                "device_id": "00000000-0000-0000-0000-000000000092",
+                "location_id": "10000000-0000-0000-0000-000000000092",
+                "unexpected": True,
+            },
+        )
+
+    assert response.status_code == 422
+
+
+def test_create_scan_session_audits_and_commits(monkeypatch: MonkeyPatch) -> None:
+    session_id = UUID("40000000-0000-0000-0000-000000000092")
+    device_id = UUID("00000000-0000-0000-0000-000000000092")
+    location_id = UUID("10000000-0000-0000-0000-000000000092")
+    started_at = datetime(2026, 8, 4, 8, 0, tzinfo=UTC)
+    audit_calls: list[dict[str, object]] = []
+
+    class FakeSessionsService:
+        async def open(
+            self,
+            _session: AsyncSession,
+            payload: object,
+            *,
+            operator_admin_id: UUID,
+            now: datetime,
+        ) -> ScanSession:
+            return ScanSession(
+                id=session_id,
+                device_id=device_id,
+                location_id=location_id,
+                operator_admin_id=operator_admin_id,
+                location_source=ScanSessionLocationSource.SESSION_DECLARED,
+                started_at=started_at,
+                last_activity_at=started_at,
+                scan_count=0,
+            )
+
+    async def fake_audit(
+        _session: AsyncSession,
+        actor: RequestActor,
+        *,
+        action: str,
+        entity_type: str,
+        entity_id: str | None,
+        before: dict[str, object] | None,
+        after: dict[str, object] | None,
+    ) -> None:
+        audit_calls.append(
+            {
+                "actor": actor.admin_id,
+                "action": action,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "before": before,
+                "after": after,
+            }
+        )
+
+    monkeypatch.setattr("backend.app.api.sessions.audited_mutation", fake_audit)
+    app = _authenticated_app(monkeypatch, _admin_user(AdminRole.ADMIN))
+    app.dependency_overrides[get_sessions_service] = lambda: FakeSessionsService()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/sessions",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            json={"device_id": str(device_id), "location_id": str(location_id)},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == str(session_id)
+    assert audit_calls[0]["action"] == "scan_session.create"
+    assert audit_calls[0]["entity_id"] == str(session_id)
+
+
+@pytest.mark.anyio
+async def test_create_scan_session_closes_stale_open_session_before_starting_new_one() -> None:
+    from backend.app.api.sessions import ScanSessionCreate, SessionsService
+    from backend.app.models.devices import Device, DeviceDirection, DeviceFormFactor, DeviceMode
+
+    class FakeSessionStore:
+        def __init__(self) -> None:
+            self.device = Device(
+                id=UUID("00000000-0000-0000-0000-000000000092"),
+                mode=DeviceMode.ROAMING,
+                form_factor=DeviceFormFactor.PHONE,
+                direction=DeviceDirection.BIDIRECTIONAL,
+                token_hash="hash",
+                token_display_prefix="tok_",
+            )
+            self.stale_session = ScanSession(
+                id=UUID("40000000-0000-0000-0000-000000000001"),
+                device_id=self.device.id,
+                location_id=UUID("10000000-0000-0000-0000-000000000001"),
+                operator_admin_id=UUID("00000000-0000-0000-0000-0000000000ad"),
+                location_source=ScanSessionLocationSource.SESSION_DECLARED,
+                started_at=datetime(2026, 8, 4, 8, 0, tzinfo=UTC),
+                last_activity_at=datetime(2026, 8, 4, 8, 0, tzinfo=UTC),
+                scan_count=0,
+            )
+            self.added: list[ScanSession] = []
+            self.flush_count = 0
+
+        async def get(self, model: object, identifier: UUID) -> Device | None:
+            return self.device
+
+        async def execute(self, query: object) -> object:
+            class FakeResult:
+                def scalar_one_or_none(self_inner: object) -> ScanSession:
+                    return self.stale_session
+
+            return FakeResult()
+
+        def add(self, scan_session: ScanSession) -> None:
+            self.added.append(scan_session)
+
+        async def flush(self) -> None:
+            self.flush_count += 1
+
+    store = FakeSessionStore()
+    service = SessionsService()
+
+    opened = await service.open(
+        cast(AsyncSession, store),
+        ScanSessionCreate(
+            device_id=store.device.id,
+            location_id=UUID("10000000-0000-0000-0000-000000000002"),
+        ),
+        operator_admin_id=UUID("00000000-0000-0000-0000-0000000000ad"),
+        now=datetime(2026, 8, 4, 8, 21, tzinfo=UTC),
+    )
+
+    assert store.stale_session.ended_at == datetime(2026, 8, 4, 8, 21, tzinfo=UTC)
+    assert store.stale_session.end_reason == ScanSessionEndReason.IDLE_TIMEOUT
+    assert opened.location_id == UUID("10000000-0000-0000-0000-000000000002")
+    assert store.added == [opened]
+    assert store.flush_count == 2
 
 
 def test_supervisor_cannot_read_org_wide_groups(monkeypatch: MonkeyPatch) -> None:
