@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.config import Settings, get_settings
+from backend.app.face.gallery import DEFAULT_GALLERY_STATE
 from backend.app.settings.resolver import DEFAULT_SETTINGS_STORE, settings_version_for_health
 
 router = APIRouter(tags=["health"])
@@ -40,6 +41,7 @@ def deep_health(settings: Annotated[Settings, Depends(get_settings)]) -> dict[st
         "status": "ok",
         "checks": checks,
         "settings_version": settings_version_for_health(DEFAULT_SETTINGS_STORE),
+        **DEFAULT_GALLERY_STATE.health(),
     }
 
 
