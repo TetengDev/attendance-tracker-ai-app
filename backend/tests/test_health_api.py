@@ -68,6 +68,9 @@ def test_deep_health_exposes_settings_version(monkeypatch: MonkeyPatch) -> None:
             "status": "ok",
             "checks": {"postgres": True, "redis": True},
             "settings_version": 1,
+            "gallery_version": 1,
+            "index_loaded_version": 0,
+            "gallery_diverged": True,
         }
 
 
