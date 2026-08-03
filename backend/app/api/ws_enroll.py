@@ -16,6 +16,7 @@ from backend.app.api.enrollment import (
     FaceEngineDep,
     GalleryIndexDep,
     ImageCandidate,
+    _apply_gallery_entries,
     get_enrollment_service,
 )
 from backend.app.db.session import get_session
@@ -52,10 +53,13 @@ async def guided_enrollment_session(
         {
             "type": "pose_sequence",
             "poses": [pose.value for pose in GUIDED_POSE_SEQUENCE],
+            "next_pose": GUIDED_POSE_SEQUENCE[0].value,
         }
     )
+    pose_index = 0
     try:
         while True:
+            expected_pose = GUIDED_POSE_SEQUENCE[min(pose_index, len(GUIDED_POSE_SEQUENCE) - 1)]
             payload = await websocket.receive_json()
             try:
                 frame = GuidedFrame.model_validate(payload)
@@ -68,9 +72,19 @@ async def guided_enrollment_session(
             except (ValidationError, binascii.Error) as exc:
                 await websocket.send_json({"type": "rejected", "detail": str(exc)})
                 continue
+            if frame.pose != expected_pose:
+                await websocket.send_json(
+                    {
+                        "type": "rejected",
+                        "detail": f"expected pose {expected_pose.value}",
+                        "expected_pose": expected_pose.value,
+                        "received_pose": frame.pose.value,
+                    }
+                )
+                continue
 
             try:
-                response = await service.commit_images(
+                commit = await service.prepare_commit(
                     session,
                     admin_user,
                     person_id=person_id,
@@ -80,16 +94,25 @@ async def guided_enrollment_session(
                     gallery_index=gallery_index,
                     now=datetime.now(UTC),
                 )
+                response = commit.response
                 await session.commit()
+                await _apply_gallery_entries(session, gallery_index, commit.gallery_entries)
             except CrudError as exc:
                 await session.rollback()
                 await websocket.send_json({"type": "error", "detail": exc.message})
                 continue
+            if response.accepted_count == 1 and pose_index < len(GUIDED_POSE_SEQUENCE) - 1:
+                pose_index += 1
+            next_pose = GUIDED_POSE_SEQUENCE[pose_index].value
             await websocket.send_json(
                 {
                     "type": "capture_result",
                     "pose": frame.pose.value,
                     "accepted": response.accepted_count == 1,
+                    "expected_pose": expected_pose.value,
+                    "next_pose": next_pose,
+                    "sequence_complete": response.accepted_count == 1
+                    and pose_index == len(GUIDED_POSE_SEQUENCE) - 1,
                     "enrollment_complete": response.enrollment_complete,
                     "active_embeddings_count": response.active_embeddings_count,
                     "results": [result.model_dump(mode="json") for result in response.results],

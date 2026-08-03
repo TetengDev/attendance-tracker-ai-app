@@ -34,7 +34,13 @@ from backend.app.enrollment.consent import (
     require_active_biometric_enrollment_consent,
 )
 from backend.app.enrollment.validate import EnrollmentValidationResult, validate_enrollment_image
-from backend.app.face.gallery import GalleryEntry, GalleryIndex, bump_gallery_version
+from backend.app.face.gallery import (
+    GalleryEntry,
+    GalleryIndex,
+    MatchDecision,
+    MatchResult,
+    bump_gallery_version,
+)
 from backend.app.face.protocol import FaceEngine, FakeFaceEngine
 from backend.app.models.admin import AdminUser
 from backend.app.models.biometrics import (
@@ -81,6 +87,21 @@ class EnrollmentCommitResponse(StrictSchema):
     results: list[EnrollmentImageResult]
 
 
+class EnrollmentProbeCandidate(StrictSchema):
+    person_id: UUID
+    embedding_id: UUID
+    score: float
+
+
+class EnrollmentProbeResponse(StrictSchema):
+    decision: MatchDecision
+    person_id: UUID | None
+    embedding_id: UUID | None
+    score: float | None
+    margin: float | None
+    candidates: list[EnrollmentProbeCandidate]
+
+
 @dataclass(frozen=True)
 class ImageCandidate:
     filename: str
@@ -90,10 +111,20 @@ class ImageCandidate:
 
 
 @dataclass(frozen=True)
+class RejectedUploadCandidate:
+    result: EnrollmentImageResult
+
+
+@dataclass(frozen=True)
 class StoredEnrollmentImage:
     result: EnrollmentImageResult
-    embedding_vector: np.ndarray | None
-    person_id: UUID
+    gallery_entry: GalleryEntry | None
+
+
+@dataclass(frozen=True)
+class EnrollmentCommit:
+    response: EnrollmentCommitResponse
+    gallery_entries: tuple[GalleryEntry, ...]
 
 
 class EnrollmentService:
@@ -109,6 +140,30 @@ class EnrollmentService:
         gallery_index: GalleryIndex,
         now: datetime,
     ) -> EnrollmentCommitResponse:
+        commit = await self.prepare_commit(
+            session,
+            admin_user,
+            person_id=person_id,
+            candidates=candidates,
+            policy_version=policy_version,
+            face_engine=face_engine,
+            gallery_index=gallery_index,
+            now=now,
+        )
+        return commit.response
+
+    async def prepare_commit(
+        self,
+        session: AsyncSession,
+        admin_user: AdminUser,
+        *,
+        person_id: UUID,
+        candidates: Sequence[ImageCandidate],
+        policy_version: str,
+        face_engine: FaceEngine,
+        gallery_index: GalleryIndex,
+        now: datetime,
+    ) -> EnrollmentCommit:
         await self._require_person_visible(
             session,
             admin_user,
@@ -139,26 +194,22 @@ class EnrollmentService:
                 )
             )
 
-        for image in stored_images:
-            if image.embedding_vector is not None and image.result.embedding_id is not None:
-                await bump_gallery_version(session)
-                gallery_index.add(
-                    GalleryEntry(
-                        person_id=image.person_id,
-                        embedding_id=image.result.embedding_id,
-                        vector=image.embedding_vector,
-                    )
-                )
+        _ = gallery_index
 
         active_count = await self._active_embeddings_count(session, person_id=person_id)
         results = [image.result for image in stored_images]
-        return EnrollmentCommitResponse(
-            person_id=person_id,
-            accepted_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED),
-            rejected_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.REJECTED),
-            active_embeddings_count=active_count,
-            enrollment_complete=enrollment_complete(active_count),
-            results=results,
+        return EnrollmentCommit(
+            response=EnrollmentCommitResponse(
+                person_id=person_id,
+                accepted_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED),
+                rejected_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.REJECTED),
+                active_embeddings_count=active_count,
+                enrollment_complete=enrollment_complete(active_count),
+                results=results,
+            ),
+            gallery_entries=tuple(
+                image.gallery_entry for image in stored_images if image.gallery_entry is not None
+            ),
         )
 
     async def _validate_and_store_candidate(
@@ -178,23 +229,20 @@ class EnrollmentService:
         except ValueError as exc:
             return StoredEnrollmentImage(
                 result=_rejected_result(candidate, "invalid_image", str(exc)),
-                embedding_vector=None,
-                person_id=person_id,
+                gallery_entry=None,
             )
 
         if not validation.passed or validation.detection is None or validation.quality is None:
             return StoredEnrollmentImage(
                 result=_validation_rejected_result(candidate, validation),
-                embedding_vector=None,
-                person_id=person_id,
+                gallery_entry=None,
             )
 
         liveness = face_engine.liveness(bgr, validation.detection.bbox)
         if not liveness.passed:
             return StoredEnrollmentImage(
                 result=_rejected_result(candidate, "liveness_failed", "Liveness check failed."),
-                embedding_vector=None,
-                person_id=person_id,
+                gallery_entry=None,
             )
 
         aligned = face_engine.align(bgr, validation.detection.landmarks)
@@ -265,8 +313,11 @@ class EnrollmentService:
                 pose=candidate.pose,
                 quality_score=validation.quality.score,
             ),
-            embedding_vector=embedding.vector,
-            person_id=person_id,
+            gallery_entry=GalleryEntry(
+                person_id=person_id,
+                embedding_id=face_embedding.id,
+                vector=embedding.vector,
+            ),
         )
 
     async def _require_person_visible(
@@ -371,6 +422,39 @@ async def capture_enrollment_image(
     )
 
 
+@router.post("/probe", response_model=EnrollmentProbeResponse)
+async def probe_enrollment_identity(
+    session: SessionDep,
+    admin_user: AdminUserDep,
+    face_engine: FaceEngineDep,
+    gallery_index: GalleryIndexDep,
+    file: Annotated[UploadFile, File()],
+) -> EnrollmentProbeResponse:
+    _ = session, admin_user
+    try:
+        candidate = await _candidate_from_upload(file, default_pose=EnrollmentPose.OTHER)
+        if isinstance(candidate, RejectedUploadCandidate):
+            message = candidate.result.rejection_message or "Probe image failed validation."
+            raise CrudError(CrudErrorCode.INVALID_INPUT, message)
+        bgr = decode_image_to_bgr(candidate.payload)
+        validation = validate_enrollment_image(bgr, face_engine)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+    except ValueError as exc:
+        raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, str(exc))) from exc
+    if not validation.passed or validation.detection is None:
+        rejection = validation.rejection.message if validation.rejection else "Probe image failed validation."
+        raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, rejection))
+
+    liveness = face_engine.liveness(bgr, validation.detection.bbox)
+    if not liveness.passed:
+        raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, "Liveness check failed."))
+
+    aligned = face_engine.align(bgr, validation.detection.landmarks)
+    embedding = face_engine.embed(aligned)
+    return _probe_response(gallery_index.match(embedding.vector))
+
+
 async def _commit_uploads(
     session: AsyncSession,
     service: EnrollmentService,
@@ -386,8 +470,12 @@ async def _commit_uploads(
     audit_action: str,
 ) -> EnrollmentCommitResponse:
     try:
-        candidates = [await _candidate_from_upload(file, default_pose=default_pose) for file in files]
-        response = await service.commit_images(
+        prepared_uploads = [await _candidate_from_upload(file, default_pose=default_pose) for file in files]
+        rejected_uploads = [
+            prepared.result for prepared in prepared_uploads if isinstance(prepared, RejectedUploadCandidate)
+        ]
+        candidates = [prepared for prepared in prepared_uploads if isinstance(prepared, ImageCandidate)]
+        commit = await service.prepare_commit(
             session,
             admin_user,
             person_id=person_id,
@@ -397,6 +485,7 @@ async def _commit_uploads(
             gallery_index=gallery_index,
             now=datetime.now(UTC),
         )
+        response = _merge_rejected_uploads(commit.response, rejected_uploads)
         actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
@@ -413,22 +502,62 @@ async def _commit_uploads(
             },
         )
         await commit_or_422(session)
+        await _apply_gallery_entries(session, gallery_index, commit.gallery_entries)
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
     return response
 
 
-async def _candidate_from_upload(file: UploadFile, *, default_pose: EnrollmentPose) -> ImageCandidate:
+async def _candidate_from_upload(
+    file: UploadFile,
+    *,
+    default_pose: EnrollmentPose,
+) -> ImageCandidate | RejectedUploadCandidate:
     content_type = file.content_type or "application/octet-stream"
     if content_type not in SUPPORTED_IMAGE_TYPES:
-        raise translate_crud_error(
-            CrudError(CrudErrorCode.INVALID_INPUT, f"unsupported image content type: {content_type}")
+        filename = file.filename or "capture"
+        return RejectedUploadCandidate(
+            result=EnrollmentImageResult(
+                filename=filename,
+                status=EnrollmentValidationStatus.REJECTED,
+                pose=default_pose,
+                rejection_code="unsupported_content_type",
+                rejection_message=f"Unsupported image content type: {content_type}",
+            )
         )
     return ImageCandidate(
         filename=file.filename or "capture",
         content_type=content_type,
         payload=await file.read(),
         pose=default_pose,
+    )
+
+
+async def _apply_gallery_entries(
+    session: AsyncSession,
+    gallery_index: GalleryIndex,
+    entries: Sequence[GalleryEntry],
+) -> None:
+    for entry in entries:
+        await bump_gallery_version(session)
+        gallery_index.add(entry)
+
+
+def _merge_rejected_uploads(
+    response: EnrollmentCommitResponse,
+    rejected_uploads: Sequence[EnrollmentImageResult],
+) -> EnrollmentCommitResponse:
+    if not rejected_uploads:
+        return response
+    return EnrollmentCommitResponse(
+        person_id=response.person_id,
+        accepted_count=response.accepted_count,
+        rejected_count=response.rejected_count + len(rejected_uploads),
+        active_embeddings_count=response.active_embeddings_count,
+        enrollment_complete=response.enrollment_complete,
+        target_embeddings=response.target_embeddings,
+        minimum_complete_embeddings=response.minimum_complete_embeddings,
+        results=[*response.results, *rejected_uploads],
     )
 
 
@@ -479,6 +608,24 @@ def _payload_columns(payload: Any) -> dict[str, object]:
         "payload_nonce": payload.payload_nonce,
         "ciphertext": payload.ciphertext,
     }
+
+
+def _probe_response(result: MatchResult) -> EnrollmentProbeResponse:
+    return EnrollmentProbeResponse(
+        decision=result.decision,
+        person_id=result.top1.person_id if result.top1 is not None else None,
+        embedding_id=result.top1.embedding_id if result.top1 is not None else None,
+        score=result.top1.score if result.top1 is not None else None,
+        margin=result.margin,
+        candidates=[
+            EnrollmentProbeCandidate(
+                person_id=candidate.person_id,
+                embedding_id=candidate.embedding_id,
+                score=candidate.score,
+            )
+            for candidate in result.candidates
+        ],
+    )
 
 
 def _asset_aad(*, person_id: UUID, filename: str) -> bytes:

@@ -3,15 +3,19 @@ from __future__ import annotations
 import base64
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
+from io import BytesIO
 from uuid import UUID
 
+import numpy as np
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 from pytest import MonkeyPatch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.common import authenticated_admin_user
 from backend.app.api.enrollment import (
+    EnrollmentCommit,
     EnrollmentCommitResponse,
     EnrollmentImageResult,
     EnrollmentValidationStatus,
@@ -22,6 +26,8 @@ from backend.app.api.enrollment import (
 )
 from backend.app.config import get_settings
 from backend.app.db.session import get_session
+from backend.app.face.gallery import MatchCandidate, MatchDecision, MatchResult
+from backend.app.face.protocol import FakeFaceEngine
 from backend.app.main import create_app
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.biometrics import (
@@ -62,6 +68,30 @@ class FakeEnrollmentService:
         gallery_index: object,
         now: datetime,
     ) -> EnrollmentCommitResponse:
+        commit = await self.prepare_commit(
+            _session,
+            _admin_user,
+            person_id=person_id,
+            candidates=candidates,
+            policy_version=policy_version,
+            face_engine=face_engine,
+            gallery_index=gallery_index,
+            now=now,
+        )
+        return commit.response
+
+    async def prepare_commit(
+        self,
+        _session: AsyncSession,
+        _admin_user: AdminUser,
+        *,
+        person_id: UUID,
+        candidates: Sequence[ImageCandidate],
+        policy_version: str,
+        face_engine: object,
+        gallery_index: object,
+        now: datetime,
+    ) -> EnrollmentCommit:
         candidate_list = list(candidates)
         self.calls.append(
             {
@@ -83,13 +113,16 @@ class FakeEnrollmentService:
             )
             for index, candidate in enumerate(candidate_list)
         ]
-        return EnrollmentCommitResponse(
-            person_id=person_id,
-            accepted_count=len(results),
-            rejected_count=0,
-            active_embeddings_count=self.active_embeddings_count,
-            enrollment_complete=self.active_embeddings_count >= MIN_ACTIVE_EMBEDDINGS_FOR_ENROLLMENT,
-            results=results,
+        return EnrollmentCommit(
+            response=EnrollmentCommitResponse(
+                person_id=person_id,
+                accepted_count=len(results),
+                rejected_count=0,
+                active_embeddings_count=self.active_embeddings_count,
+                enrollment_complete=self.active_embeddings_count >= MIN_ACTIVE_EMBEDDINGS_FOR_ENROLLMENT,
+                results=results,
+            ),
+            gallery_entries=(),
         )
 
 
@@ -162,6 +195,31 @@ def test_upload_endpoint_returns_per_image_results(monkeypatch: MonkeyPatch) -> 
     assert service.calls[0]["poses"] == [EnrollmentPose.FRONTAL, EnrollmentPose.FRONTAL]
 
 
+def test_upload_endpoint_returns_inline_rejection_for_unsupported_file(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    person_id = UUID("10000000-0000-0000-0000-000000000037")
+    service = FakeEnrollmentService(active_embeddings_count=1)
+
+    with TestClient(_app(monkeypatch, service)) as client:
+        response = client.post(
+            f"/api/enrollment/{person_id}/upload",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            data={"policy_version": "privacy-v2", "capture_pose": "frontal"},
+            files=[
+                ("files", ("good.png", b"not decoded by fake service", "image/png")),
+                ("files", ("notes.txt", b"not an image", "text/plain")),
+            ],
+        )
+
+    assert response.status_code == 201
+    assert response.json()["accepted_count"] == 1
+    assert response.json()["rejected_count"] == 1
+    assert response.json()["results"][1]["filename"] == "notes.txt"
+    assert response.json()["results"][1]["rejection_code"] == "unsupported_content_type"
+    assert service.calls[0]["candidate_count"] == 1
+
+
 def test_capture_endpoint_keeps_two_embedding_person_incomplete(monkeypatch: MonkeyPatch) -> None:
     person_id = UUID("10000000-0000-0000-0000-000000000035")
     service = FakeEnrollmentService(active_embeddings_count=2)
@@ -180,7 +238,42 @@ def test_capture_endpoint_keeps_two_embedding_person_incomplete(monkeypatch: Mon
     assert response.json()["enrollment_complete"] is False
 
 
-def test_guided_websocket_commits_pose_frame(monkeypatch: MonkeyPatch) -> None:
+def test_probe_endpoint_returns_gallery_identity(monkeypatch: MonkeyPatch) -> None:
+    person_id = UUID("10000000-0000-0000-0000-000000000036")
+    embedding_id = UUID("20000000-0000-0000-0000-000000000036")
+    engine = FakeFaceEngine()
+    engine.next_result(person="alice")
+
+    class FakeGalleryIndex:
+        def match(self, _query: np.ndarray) -> MatchResult:
+            candidate = MatchCandidate(person_id=person_id, embedding_id=embedding_id, score=0.98)
+            return MatchResult(
+                decision=MatchDecision.ACCEPT,
+                candidates=(candidate,),
+                top1=candidate,
+                top2_other_person=None,
+                margin=None,
+            )
+
+    app = _app(monkeypatch)
+    app.dependency_overrides[get_face_engine] = lambda: engine
+    app.dependency_overrides[get_gallery_index] = lambda: FakeGalleryIndex()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/enrollment/probe",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            files={"file": ("probe.png", _sharp_png(), "image/png")},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["decision"] == "accept"
+    assert response.json()["person_id"] == str(person_id)
+    assert response.json()["embedding_id"] == str(embedding_id)
+    assert response.json()["score"] == 0.98
+
+
+def test_guided_websocket_enforces_pose_progression(monkeypatch: MonkeyPatch) -> None:
     person_id = UUID("10000000-0000-0000-0000-000000000036")
     service = FakeEnrollmentService(active_embeddings_count=3)
 
@@ -188,7 +281,9 @@ def test_guided_websocket_commits_pose_frame(monkeypatch: MonkeyPatch) -> None:
         f"/api/enrollment/{person_id}/guided?policy_version=privacy-v2",
         headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
     ) as websocket:
-        assert websocket.receive_json()["type"] == "pose_sequence"
+        sequence = websocket.receive_json()
+        assert sequence["type"] == "pose_sequence"
+        assert sequence["next_pose"] == "frontal"
         websocket.send_json(
             {
                 "filename": "left.jpg",
@@ -197,9 +292,30 @@ def test_guided_websocket_commits_pose_frame(monkeypatch: MonkeyPatch) -> None:
                 "image_base64": base64.b64encode(b"frame").decode(),
             }
         )
+        rejected = websocket.receive_json()
+        websocket.send_json(
+            {
+                "filename": "front.jpg",
+                "content_type": "image/jpeg",
+                "pose": "frontal",
+                "image_base64": base64.b64encode(b"frame").decode(),
+            }
+        )
         message = websocket.receive_json()
 
+    assert rejected["type"] == "rejected"
+    assert rejected["expected_pose"] == "frontal"
     assert message["type"] == "capture_result"
-    assert message["pose"] == "yaw_left"
+    assert message["pose"] == "frontal"
+    assert message["next_pose"] == "yaw_left"
     assert message["enrollment_complete"] is True
-    assert service.calls[0]["poses"] == [EnrollmentPose.YAW_LEFT]
+    assert service.calls[0]["poses"] == [EnrollmentPose.FRONTAL]
+
+
+def _sharp_png() -> bytes:
+    image = np.full((260, 320, 3), 96, dtype=np.uint8)
+    for x in range(70, 250, 8):
+        image[30:230, x : x + 4, :] = 176
+    buffer = BytesIO()
+    Image.fromarray(image, mode="RGB").save(buffer, format="PNG")
+    return buffer.getvalue()
