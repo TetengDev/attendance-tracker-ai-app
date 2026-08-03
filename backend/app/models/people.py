@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
 )
@@ -53,6 +54,8 @@ class Person(Base):
     __table_args__ = (
         UniqueConstraint("external_id", name="uq_people_external_id"),
         CheckConstraint("display_name <> ''", name="display_name_non_empty"),
+        CheckConstraint("merged_into_person_id IS NULL OR merged_into_person_id <> id", name="person_merge_not_self"),
+        Index("ix_people_merged_into_person_id", "merged_into_person_id"),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -60,6 +63,12 @@ class Person(Base):
     kind: Mapped[PersonKind] = mapped_column(String(32), nullable=False)
     display_name: Mapped[str] = mapped_column(String(256), nullable=False)
     preferred_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    merged_into_person_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("people.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    merged_at: Mapped[datetime | None] = mapped_column(nullable=True)
     locale: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = created_at_column()
@@ -74,6 +83,7 @@ class Person(Base):
         cascade="all, delete-orphan",
         foreign_keys="PersonGuardian.person_id",
     )
+    merged_into: Mapped[Person | None] = orm_relationship(remote_side=[id])
 
 
 class Group(Base):
