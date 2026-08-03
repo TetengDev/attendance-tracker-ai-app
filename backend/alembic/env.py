@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from backend.app.db.base import Base
 from backend.app.models import (  # noqa: F401
     attendance,
+    audit,
     biometrics,
     devices,
     people,
