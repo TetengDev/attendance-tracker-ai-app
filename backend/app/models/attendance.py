@@ -77,6 +77,7 @@ class AttendanceEvent(Base):
         ),
         Index("ix_attendance_events_person_business_date", "person_id", "business_date"),
         Index("ix_attendance_events_device_local_date", "device_id", "device_local_date"),
+        Index("ix_attendance_events_session_id", "session_id"),
     )
 
     id: Mapped[int] = bigint_identity_pk()
@@ -89,6 +90,11 @@ class AttendanceEvent(Base):
     device_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("devices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    session_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("scan_sessions.id", ondelete="SET NULL"),
         nullable=True,
     )
     location_id: Mapped[UUID | None] = mapped_column(
