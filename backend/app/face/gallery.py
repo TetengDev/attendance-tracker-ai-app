@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
@@ -7,10 +8,14 @@ from time import perf_counter
 from uuid import UUID
 
 import numpy as np
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.models.settings import SettingsVersion
 from backend.app.settings.registry import default_settings
 
 EMBEDDING_DIMENSIONS = 512
+GALLERY_VERSION_NAMESPACE = "gallery"
 
 
 class MatchDecision(str, Enum):
@@ -96,6 +101,13 @@ class GalleryVersionState:
             self._required_version += 1
             return self._required_version
 
+    def observe_required_version(self, version: int) -> int:
+        if version < 1:
+            raise ValueError("gallery version must be positive")
+        with self._lock:
+            self._required_version = max(self._required_version, version)
+            return self._required_version
+
     def mark_loaded(self, version: int | None = None) -> int:
         with self._lock:
             target_version = self._required_version if version is None else version
@@ -114,6 +126,7 @@ class GalleryVersionState:
 
 
 DEFAULT_GALLERY_STATE = GalleryVersionState()
+GalleryEntryLoader = Callable[[], Awaitable[list[GalleryEntry]]]
 
 
 class GalleryIndex:
@@ -204,9 +217,7 @@ class GalleryIndex:
         thresholds: MatchThresholds | None = None,
         k: int = 5,
     ) -> MatchResult:
-        candidates = self.top_k(query, k=k)
-        top1 = candidates[0] if candidates else None
-        top2_other = _first_other_person(candidates, top1.person_id) if top1 is not None else None
+        candidates, top1, top2_other = self._ranked_candidates_and_nearest_other(query, k=k)
         settings = thresholds or MatchThresholds.from_settings()
         decision = _decision_for(top1, top2_other, settings)
         margin = None if top1 is None or top2_other is None else top1.score - top2_other.score
@@ -218,6 +229,18 @@ class GalleryIndex:
             margin=margin,
         )
 
+    async def reload_if_stale(
+        self,
+        session: AsyncSession,
+        load_entries: GalleryEntryLoader,
+    ) -> bool:
+        required_version = await poll_gallery_version(session, self._version_state)
+        if self._version >= required_version:
+            return False
+        entries = await load_entries()
+        self.load(entries, version=required_version)
+        return True
+
     def stats(self) -> GalleryStats:
         with self._lock:
             return GalleryStats(
@@ -227,6 +250,42 @@ class GalleryIndex:
                 loaded_version=self._version,
                 load_seconds=self._load_seconds,
             )
+
+    def _ranked_candidates_and_nearest_other(
+        self,
+        query: np.ndarray,
+        *,
+        k: int,
+    ) -> tuple[tuple[MatchCandidate, ...], MatchCandidate | None, MatchCandidate | None]:
+        if k < 1:
+            raise ValueError("k must be positive")
+        query_vector = normalized_embedding(query)
+        with self._lock:
+            if len(self._embedding_ids) == 0:
+                return (), None, None
+            scores = self._vectors @ query_vector
+            count = min(k, len(scores))
+            top_indexes = np.argpartition(scores, -count)[-count:]
+            ordered_indexes = top_indexes[np.argsort(scores[top_indexes])[::-1]]
+            candidates = tuple(self._candidate_for_index(index, scores) for index in ordered_indexes)
+            top1_index = int(np.argmax(scores))
+            top1 = self._candidate_for_index(top1_index, scores)
+            other_mask = np.array(
+                [person_id != top1.person_id for person_id in self._person_ids],
+                dtype=bool,
+            )
+            if not np.any(other_mask):
+                return candidates, top1, None
+            other_indexes = np.flatnonzero(other_mask)
+            nearest_other_index = int(other_indexes[np.argmax(scores[other_indexes])])
+            return candidates, top1, self._candidate_for_index(nearest_other_index, scores)
+
+    def _candidate_for_index(self, index: int, scores: np.ndarray) -> MatchCandidate:
+        return MatchCandidate(
+            person_id=self._person_ids[index],
+            embedding_id=self._embedding_ids[index],
+            score=float(scores[index]),
+        )
 
 
 def normalized_embedding(vector: np.ndarray) -> np.ndarray:
@@ -267,3 +326,45 @@ def _float_setting(settings: dict[str, object], key: str) -> float:
     if not isinstance(value, int | float):
         raise TypeError(f"{key} must be numeric")
     return float(value)
+
+
+async def current_gallery_version(session: AsyncSession) -> int:
+    result = await session.execute(
+        select(SettingsVersion.current_version).where(
+            SettingsVersion.namespace == GALLERY_VERSION_NAMESPACE,
+        )
+    )
+    return result.scalar_one_or_none() or 1
+
+
+async def bump_gallery_version(session: AsyncSession) -> int:
+    result = await session.execute(
+        text(
+            """
+            INSERT INTO settings_versions (namespace, current_version)
+            VALUES (:namespace, 2)
+            ON CONFLICT (namespace) DO UPDATE
+            SET current_version = settings_versions.current_version + 1,
+                updated_at = now()
+            RETURNING current_version
+            """
+        ),
+        {"namespace": GALLERY_VERSION_NAMESPACE},
+    )
+    return int(result.scalar_one())
+
+
+async def poll_gallery_version(
+    session: AsyncSession,
+    state: GalleryVersionState = DEFAULT_GALLERY_STATE,
+) -> int:
+    version = await current_gallery_version(session)
+    return state.observe_required_version(version)
+
+
+async def mark_gallery_loaded_from_db(
+    session: AsyncSession,
+    state: GalleryVersionState = DEFAULT_GALLERY_STATE,
+) -> int:
+    version = await poll_gallery_version(session, state)
+    return state.mark_loaded(version)
