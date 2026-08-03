@@ -193,6 +193,17 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-33"
+paths = [
+  "backend/app/api/consents.py",
+  "backend/app/enrollment/consent.py",
+  "backend/app/main.py",
+  "backend/tests/test_consents_api.py",
+  "backend/tests/test_consent_enforcement.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-24"
 paths = [
   "backend/app/models/devices.py",
