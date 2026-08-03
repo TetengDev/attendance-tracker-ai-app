@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -318,21 +319,57 @@ def event_matches_grain(event: AttendanceEvent, grain: AttendanceGrain) -> bool:
     )
 
 
+def canonical_attendance_grain(
+    grain: AttendanceGrain,
+    merged_into: Mapping[UUID, UUID],
+) -> AttendanceGrain:
+    return AttendanceGrain(
+        person_id=canonical_attendance_person_id(grain.person_id, merged_into),
+        business_date=grain.business_date,
+        shift_id=grain.shift_id,
+        period_label=grain.period_label,
+    )
+
+
+def canonical_attendance_person_id(person_id: UUID, merged_into: Mapping[UUID, UUID]) -> UUID:
+    seen: set[UUID] = set()
+    current = person_id
+    while current in merged_into:
+        if current in seen:
+            raise ValueError("cycle detected in person merge map")
+        seen.add(current)
+        current = merged_into[current]
+    return current
+
+
 def rebuild_attendance_records(
     expected_rows: list[ExpectedAttendance],
     events: list[AttendanceEvent],
     overrides: list[AttendanceOverride],
     *,
     resolved_at: datetime,
+    merged_into: Mapping[UUID, UUID] | None = None,
 ) -> list[AttendanceRecord]:
-    overrides_by_grain = {grain_for_override(override): override for override in overrides}
+    aliases = merged_into or {}
+    overrides_by_grain = {
+        canonical_attendance_grain(grain_for_override(override), aliases): override
+        for override in overrides
+    }
+    expected_by_grain: dict[AttendanceGrain, ExpectedAttendance] = {}
+    for expected in expected_rows:
+        grain = canonical_attendance_grain(grain_for_expected(expected), aliases)
+        expected_by_grain.setdefault(grain, expected)
+
     records: list[AttendanceRecord] = []
 
-    for expected in expected_rows:
-        grain = grain_for_expected(expected)
+    for grain, expected in expected_by_grain.items():
         override = overrides_by_grain.get(grain)
         matching_events = sorted(
-            [event for event in events if event_matches_grain(event, grain)],
+            [
+                event
+                for event in events
+                if _event_matches_canonical_grain(event, grain, aliases)
+            ],
             key=lambda event: event.occurred_at,
         )
         first_event = matching_events[0] if matching_events else None
@@ -360,3 +397,18 @@ def rebuild_attendance_records(
         )
 
     return records
+
+
+def _event_matches_canonical_grain(
+    event: AttendanceEvent,
+    grain: AttendanceGrain,
+    merged_into: Mapping[UUID, UUID],
+) -> bool:
+    if event.person_id is None:
+        return False
+    return (
+        canonical_attendance_person_id(event.person_id, merged_into) == grain.person_id
+        and event.business_date == grain.business_date
+        and event.shift_id == grain.shift_id
+        and (event.period_label or PER_DAY_PERIOD_LABEL) == grain.period_label
+    )
