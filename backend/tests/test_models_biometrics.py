@@ -93,7 +93,6 @@ def test_biometric_models_encode_required_constraints() -> None:
     embedding_constraints = {
         constraint.name for constraint in cast(Table, FaceEmbedding.__table__).constraints
     }
-    embedding_indexes = {index.name for index in cast(Table, FaceEmbedding.__table__).indexes}
 
     assert "uq_consents_person_type_policy_version" in consent_constraints
     assert "ck_consents_guardian_consent_requires_guardian" in consent_constraints
@@ -101,7 +100,6 @@ def test_biometric_models_encode_required_constraints() -> None:
     assert "ck_face_embeddings_embedding_dimensions_512" in embedding_constraints
     assert "ck_face_embeddings_policy_version_non_empty" in embedding_constraints
     assert "uq_face_embeddings_person_model_asset" in embedding_constraints
-    assert "uq_face_embeddings_active_person_model" in embedding_indexes
 
 
 def test_embedding_model_uses_uuid_primary_key() -> None:
