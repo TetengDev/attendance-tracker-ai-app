@@ -9,11 +9,9 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Index,
     LargeBinary,
     String,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -171,14 +169,6 @@ class FaceEmbedding(EncryptedPayloadColumns, Base):
         CheckConstraint("model_version <> ''", name="model_version_non_empty"),
         CheckConstraint("policy_version <> ''", name="policy_version_non_empty"),
         CheckConstraint("embedding_dimensions = 512", name="embedding_dimensions_512"),
-        Index(
-            "uq_face_embeddings_active_person_model",
-            "person_id",
-            "model_name",
-            "model_version",
-            unique=True,
-            postgresql_where=text("is_active"),
-        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
