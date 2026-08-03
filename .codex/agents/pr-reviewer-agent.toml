@@ -40,4 +40,10 @@ Do not:
 
 Return findings grouped by severity, with affected files, evidence, and a clear
 recommendation: fix now, create follow-up, or no action needed.
+
+When the implementing agent comments on the PR after this review, it must
+include both:
+
+- the reviewer findings; and
+- the fixes, deferrals, or no-action resolution for each finding.
 """
