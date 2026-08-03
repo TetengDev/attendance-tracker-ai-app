@@ -8,6 +8,7 @@ from sqlalchemy import Table
 from backend.app.models.people import (
     Group,
     GroupKind,
+    Person,
     PersonGroup,
     active_group_memberships,
     primary_group_for_date,
@@ -46,11 +47,16 @@ def test_person_group_effective_to_is_inclusive() -> None:
 
 
 def test_people_models_encode_required_table_constraints() -> None:
+    people_table = cast(Table, Person.__table__)
     person_groups_table = cast(Table, PersonGroup.__table__)
     groups_table = cast(Table, Group.__table__)
+    people_constraints = {constraint.name for constraint in people_table.constraints}
+    people_indexes = {index.name for index in people_table.indexes}
     person_groups_constraints = {constraint.name for constraint in person_groups_table.constraints}
     groups_constraints = {constraint.name for constraint in groups_table.constraints}
 
+    assert "ck_people_person_merge_not_self" in people_constraints
+    assert "ix_people_merged_into_person_id" in people_indexes
     assert "uq_person_groups_person_group_effective_from" in person_groups_constraints
     assert "ck_person_groups_effective_to_not_before_from" in person_groups_constraints
     assert "uq_groups_parent_name" in groups_constraints

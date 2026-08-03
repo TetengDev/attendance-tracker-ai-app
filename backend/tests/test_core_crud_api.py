@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.common import RequestActor, authenticated_admin_user
 from backend.app.api.groups import get_groups_service
 from backend.app.api.people import get_people_service
+from backend.app.api.people_merge import get_people_merge_service
 from backend.app.config import get_settings
 from backend.app.db.session import get_session
 from backend.app.main import create_app
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.people import Group, GroupKind, Person, PersonKind
+from backend.app.people.merge import PersonMergeSummary
 
 
 class FakeSession:
@@ -76,6 +78,7 @@ def test_core_crud_routers_are_registered(monkeypatch: MonkeyPatch) -> None:
         paths = set(client.get("/openapi.json").json()["paths"])
 
     assert "/api/people" in paths
+    assert "/api/people/{survivor_id}/merge" in paths
     assert "/api/groups" in paths
     assert "/api/locations" in paths
     assert "/api/devices" in paths
@@ -213,6 +216,70 @@ def test_people_list_passes_supervisor_scope_to_repository_layer(
     assert response.status_code == 200
     assert response.json()[0]["display_name"] == "Maria Santos"
     assert captured_admin == CapturedAdmin(AdminRole.SUPERVISOR, [group_id])
+
+
+def test_person_merge_endpoint_audits_and_commits(monkeypatch: MonkeyPatch) -> None:
+    survivor_id = UUID("00000000-0000-0000-0000-000000000090")
+    duplicate_id = UUID("00000000-0000-0000-0000-000000000091")
+    audit_calls: list[dict[str, object]] = []
+
+    class FakePeopleMergeService:
+        async def merge(
+            self,
+            _session: AsyncSession,
+            *,
+            survivor_id: UUID,
+            duplicate_id: UUID,
+        ) -> PersonMergeSummary:
+            return PersonMergeSummary(
+                survivor_id=survivor_id,
+                duplicate_id=duplicate_id,
+                consents_moved=1,
+                enrollment_assets_moved=2,
+                embeddings_moved=3,
+                embeddings_deactivated=1,
+                group_memberships_moved=4,
+                guardian_links_moved=5,
+                duplicate_guardian_links_removed=1,
+                gallery_version=9,
+            )
+
+    async def fake_audit(
+        _session: AsyncSession,
+        actor: RequestActor,
+        *,
+        action: str,
+        entity_type: str,
+        entity_id: str | None,
+        before: dict[str, object] | None,
+        after: dict[str, object] | None,
+    ) -> None:
+        audit_calls.append(
+            {
+                "actor": actor.admin_id,
+                "action": action,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "before": before,
+                "after": after,
+            }
+        )
+
+    monkeypatch.setattr("backend.app.api.people_merge.audited_mutation", fake_audit)
+    app = _authenticated_app(monkeypatch, _admin_user(AdminRole.ADMIN))
+    app.dependency_overrides[get_people_merge_service] = lambda: FakePeopleMergeService()
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/people/{survivor_id}/merge",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            json={"duplicate_person_id": str(duplicate_id)},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["gallery_version"] == 9
+    assert audit_calls[0]["action"] == "person.merge"
+    assert audit_calls[0]["entity_id"] == str(survivor_id)
 
 
 def test_supervisor_cannot_read_org_wide_groups(monkeypatch: MonkeyPatch) -> None:
