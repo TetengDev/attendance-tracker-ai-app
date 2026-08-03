@@ -14,6 +14,8 @@ from backend.app.audit.export import (
 )
 from backend.app.db.session import get_session_factory
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export the verified audit chain head off-box.")
@@ -26,7 +28,10 @@ def main() -> None:
     if not destination_dir:
         parser.error("--destination-dir or AUDIT_CHAIN_EXPORT_DIR is required")
     try:
-        safe_destination = validate_export_destination(Path(destination_dir), repository_root=Path.cwd())
+        safe_destination = validate_export_destination(
+            Path(destination_dir),
+            repository_root=REPOSITORY_ROOT,
+        )
         exported_path = asyncio.run(
             _export(
                 safe_destination,
