@@ -46,11 +46,14 @@ def test_attendance_models_define_four_table_split() -> None:
 
 def test_attendance_event_uses_bigint_identity_and_nullable_business_date() -> None:
     event_columns = cast(Table, AttendanceEvent.__table__).columns
+    event_indexes = {index.name for index in cast(Table, AttendanceEvent.__table__).indexes}
 
     assert event_columns["id"].primary_key
     assert event_columns["id"].identity is not None
+    assert event_columns["session_id"].nullable is True
     assert event_columns["business_date"].nullable is True
     assert event_columns["device_local_date"].nullable is True
+    assert "ix_attendance_events_session_id" in event_indexes
     assert cast(Any, event_columns["client_captured_at"].type).timezone is True
     assert cast(Any, event_columns["server_received_at"].type).timezone is True
     assert cast(Any, event_columns["occurred_at"].type).timezone is True
@@ -285,6 +288,7 @@ def attendance_event(
         idempotency_key=f"event-{event_id}",
         person_id=person_id,
         device_id=DEVICE_ID,
+        session_id=None,
         business_date=business_date,
         device_local_date=BUSINESS_DATE,
         shift_id=shift_id,
