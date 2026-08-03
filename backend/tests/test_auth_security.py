@@ -29,6 +29,10 @@ def test_argon2id_parameters_match_security_contract() -> None:
     assert not verify_admin_password(password_hash, "wrong")
 
 
+def test_password_verification_fails_closed_for_malformed_hashes() -> None:
+    assert not verify_admin_password("not-an-argon2-hash", "password")
+
+
 def test_totp_secret_generates_and_verifies_current_code() -> None:
     secret = generate_totp_secret()
     now = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)

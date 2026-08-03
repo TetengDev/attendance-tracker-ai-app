@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 ARGON2_TIME_COST = 3
 ARGON2_MEMORY_COST_KIB = 64 * 1024
@@ -25,5 +25,5 @@ def verify_admin_password(password_hash: str, password: str) -> bool:
         return False
     try:
         return password_hasher.verify(password_hash, password)
-    except VerifyMismatchError:
+    except (InvalidHashError, VerificationError, VerifyMismatchError):
         return False
