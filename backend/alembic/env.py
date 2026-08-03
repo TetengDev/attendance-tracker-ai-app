@@ -10,7 +10,14 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from backend.app.db.base import Base
-from backend.app.models import attendance, biometrics, devices, people, scheduling  # noqa: F401
+from backend.app.models import (  # noqa: F401
+    attendance,
+    biometrics,
+    devices,
+    people,
+    scheduling,
+    settings,
+)
 
 config = context.config
 
