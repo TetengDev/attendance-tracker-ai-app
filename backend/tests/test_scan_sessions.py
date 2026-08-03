@@ -184,10 +184,22 @@ def test_idle_or_max_duration_expiry_closes_and_rejects_scan() -> None:
     assert max_duration_session.end_reason == ScanSessionEndReason.MAX_DURATION
 
 
-def test_fixed_device_scan_attribution_does_not_require_explicit_session() -> None:
-    attribution = require_scan_attribution(fixed_device(), None, now=STARTED_AT)
+def test_fixed_device_scan_rejects_wrong_implicit_session() -> None:
+    wrong_location_session = scan_session(device_id=DEVICE_ID, location_id=LOCATION_B)
 
-    assert attribution.session_id is None
+    with pytest.raises(ScanSessionError, match="device location"):
+        require_scan_attribution(fixed_device(), wrong_location_session, now=STARTED_AT)
+
+
+def test_fixed_device_scan_attribution_requires_implicit_session() -> None:
+    with pytest.raises(ScanSessionError, match="implicit open scan session"):
+        require_scan_attribution(fixed_device(), None, now=STARTED_AT)
+
+    implicit_session = scan_session(device_id=DEVICE_ID, location_id=LOCATION_A)
+    implicit_session.location_source = ScanSessionLocationSource.DEVICE_FIXED
+    attribution = require_scan_attribution(fixed_device(), implicit_session, now=STARTED_AT)
+
+    assert attribution.session_id == SESSION_ID
     assert attribution.location_id == LOCATION_A
     assert attribution.location_source == AttendanceLocationSource.DEVICE_FIXED
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
@@ -20,7 +22,7 @@ from backend.app.db.session import get_session
 from backend.app.main import create_app
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.people import Group, GroupKind, Person, PersonKind
-from backend.app.models.sessions import ScanSession, ScanSessionLocationSource
+from backend.app.models.sessions import ScanSession, ScanSessionEndReason, ScanSessionLocationSource
 from backend.app.people.merge import PersonMergeSummary
 
 
@@ -366,6 +368,70 @@ def test_create_scan_session_audits_and_commits(monkeypatch: MonkeyPatch) -> Non
     assert response.json()["id"] == str(session_id)
     assert audit_calls[0]["action"] == "scan_session.create"
     assert audit_calls[0]["entity_id"] == str(session_id)
+
+
+@pytest.mark.anyio
+async def test_create_scan_session_closes_stale_open_session_before_starting_new_one() -> None:
+    from backend.app.api.sessions import ScanSessionCreate, SessionsService
+    from backend.app.models.devices import Device, DeviceDirection, DeviceFormFactor, DeviceMode
+
+    class FakeSessionStore:
+        def __init__(self) -> None:
+            self.device = Device(
+                id=UUID("00000000-0000-0000-0000-000000000092"),
+                mode=DeviceMode.ROAMING,
+                form_factor=DeviceFormFactor.PHONE,
+                direction=DeviceDirection.BIDIRECTIONAL,
+                token_hash="hash",
+                token_display_prefix="tok_",
+            )
+            self.stale_session = ScanSession(
+                id=UUID("40000000-0000-0000-0000-000000000001"),
+                device_id=self.device.id,
+                location_id=UUID("10000000-0000-0000-0000-000000000001"),
+                operator_admin_id=UUID("00000000-0000-0000-0000-0000000000ad"),
+                location_source=ScanSessionLocationSource.SESSION_DECLARED,
+                started_at=datetime(2026, 8, 4, 8, 0, tzinfo=UTC),
+                last_activity_at=datetime(2026, 8, 4, 8, 0, tzinfo=UTC),
+                scan_count=0,
+            )
+            self.added: list[ScanSession] = []
+            self.flush_count = 0
+
+        async def get(self, model: object, identifier: UUID) -> Device | None:
+            return self.device
+
+        async def execute(self, query: object) -> object:
+            class FakeResult:
+                def scalar_one_or_none(self_inner: object) -> ScanSession:
+                    return self.stale_session
+
+            return FakeResult()
+
+        def add(self, scan_session: ScanSession) -> None:
+            self.added.append(scan_session)
+
+        async def flush(self) -> None:
+            self.flush_count += 1
+
+    store = FakeSessionStore()
+    service = SessionsService()
+
+    opened = await service.open(
+        cast(AsyncSession, store),
+        ScanSessionCreate(
+            device_id=store.device.id,
+            location_id=UUID("10000000-0000-0000-0000-000000000002"),
+        ),
+        operator_admin_id=UUID("00000000-0000-0000-0000-0000000000ad"),
+        now=datetime(2026, 8, 4, 8, 21, tzinfo=UTC),
+    )
+
+    assert store.stale_session.ended_at == datetime(2026, 8, 4, 8, 21, tzinfo=UTC)
+    assert store.stale_session.end_reason == ScanSessionEndReason.IDLE_TIMEOUT
+    assert opened.location_id == UUID("10000000-0000-0000-0000-000000000002")
+    assert store.added == [opened]
+    assert store.flush_count == 2
 
 
 def test_supervisor_cannot_read_org_wide_groups(monkeypatch: MonkeyPatch) -> None:

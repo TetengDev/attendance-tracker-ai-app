@@ -27,6 +27,7 @@ from backend.app.models.sessions import ScanSession, ScanSessionEndReason, ScanS
 from backend.app.scan.sessions import (
     ScanSessionError,
     active_scan_session_for_device,
+    close_if_expired,
     close_scan_session,
     open_scan_session,
 )
@@ -83,7 +84,10 @@ class SessionsService:
             raise CrudError(CrudErrorCode.NOT_FOUND, "device not found")
         existing = await active_scan_session_for_device(session, device_id=device.id)
         if existing is not None:
-            raise CrudError(CrudErrorCode.CONFLICT, "device already has an open scan session")
+            expired = close_if_expired(existing, now=now)
+            if expired is None:
+                raise CrudError(CrudErrorCode.CONFLICT, "device already has an open scan session")
+            await session.flush()
         scan_session = open_scan_session(
             device,
             location_id=payload.location_id,

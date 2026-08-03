@@ -116,8 +116,16 @@ def require_scan_attribution(
     if DeviceMode(device.mode) is DeviceMode.FIXED:
         if device.location_id is None:
             raise ScanSessionError("fixed devices require a configured location")
+        if scan_session is None or scan_session.ended_at is not None:
+            raise ScanSessionError("fixed device requires an implicit open scan session")
+        if scan_session.device_id != device.id:
+            raise ScanSessionError("scan session belongs to a different device")
+        if scan_session.location_id != device.location_id:
+            raise ScanSessionError("fixed device session must use the device location")
+        scan_session.last_activity_at = now
+        scan_session.scan_count += 1
         return ScanAttribution(
-            session_id=scan_session.id if scan_session is not None else None,
+            session_id=scan_session.id,
             location_id=device.location_id,
             location_source=AttendanceLocationSource.DEVICE_FIXED,
         )
