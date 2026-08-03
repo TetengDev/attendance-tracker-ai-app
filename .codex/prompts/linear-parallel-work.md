@@ -40,9 +40,17 @@ PHASE 1 — RETRIEVE, ANALYZE, AND PLAN
 
 Phase 1 is read-only.
 
-Use the linear_planner subagent for repository and Linear analysis. Additional
-read-only explorer agents may be used for independent modules, but do not spawn
-implementation workers.
+The files under `.codex/agents/*.toml` are role templates. They are not
+automatically registered as callable agents by the current Codex CLI. When a
+multi-agent tool is available, spawn a subagent and include the relevant
+template's instructions in that subagent prompt. When no multi-agent tool is
+available, perform the phase sequentially and state that parallel execution is
+unavailable in the session.
+
+For Phase 1, use the `.codex/agents/linear-planner.toml` template as the role
+instructions for a read-only planning subagent. Additional read-only explorer
+agents may be used for independent modules, but do not spawn implementation
+workers.
 
 For every relevant issue, retrieve:
 
@@ -159,7 +167,9 @@ Before spawning workers:
 5. Assign exclusive ownership boundaries.
 6. Determine whether isolated Git worktrees are required.
 
-Use one story_worker subagent per approved issue.
+Use one spawned subagent per approved issue. Include the
+`.codex/agents/story-worker.toml` template instructions in each worker prompt;
+do not assume that the `story_worker` name is auto-registered by Codex.
 
 Give each worker:
 
@@ -215,9 +225,8 @@ Workers must:
 - stop when required product information is missing
 - provide a structured handoff
 
-Wait for all workers in the approved batch.
-
-Use /agent to inspect running worker threads when necessary.
+Wait for all workers in the approved batch. Use the active session's multi-agent
+inspection/wait tooling when available.
 
 After workers finish, summarize:
 
@@ -238,7 +247,10 @@ PHASE 3 — INTEGRATION AND VERIFICATION
 
 Begin only after I approve integration.
 
-Use the integrator agent to review every worker result.
+Use a spawned integration-review subagent with the
+`.codex/agents/integrator.toml` template instructions to review every worker
+result. If no multi-agent tool is available, perform this review sequentially
+using the same template.
 
 For each issue:
 
@@ -303,11 +315,14 @@ the issue being worked:
 - If one PR covers multiple Linear issues, attach the PR link to every covered
   issue and name the covered issue keys in the PR body.
 - Move issues to In Review when the PR opens.
-- Before human review, run an independent pr-reviewer-agent pass.
+- Before human review, run an independent pr-reviewer-agent pass using the
+  `.codex/agents/pr-reviewer-agent.toml` template instructions.
 - Fix low-risk, in-scope reviewer findings on the PR branch before handoff.
 - If a valid finding is broader than the current issue, create a Linear bug or
   backlog item, link it to the current issue, and attach the PR link when
   available.
+- PR comments about pr-reviewer-agent must include the review findings and the
+  fixes/resolution. Do not comment only with the final fix summary.
 - When frontend behavior, backend-visible behavior, or a new feature changes,
   attach lightweight screenshots or video evidence to the PR whenever
   practical. Captions must be understandable to client, QA, and business
