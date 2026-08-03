@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.common import RequestActor
+from backend.app.api.common import RequestActor, authenticated_admin_user
 from backend.app.api.groups import get_groups_service
 from backend.app.api.people import get_people_service
 from backend.app.config import get_settings
@@ -38,6 +38,19 @@ async def _skip_middleware_audit(_entry: object) -> None:
     return None
 
 
+def _admin_user(role: AdminRole = AdminRole.ADMIN, *, scope_group_ids: list[UUID] | None = None) -> AdminUser:
+    return AdminUser(
+        id=UUID("00000000-0000-0000-0000-0000000000ad"),
+        email="admin@example.test",
+        display_name="Admin",
+        password_hash="hash",
+        role=role,
+        scope_group_ids=scope_group_ids or [],
+        is_active=True,
+        totp_secret=b"x" * 32 if role in {AdminRole.OWNER, AdminRole.ADMIN, AdminRole.HR} else None,
+    )
+
+
 def _app(monkeypatch: MonkeyPatch) -> FastAPI:
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/attendance")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
@@ -46,6 +59,15 @@ def _app(monkeypatch: MonkeyPatch) -> FastAPI:
     get_settings.cache_clear()
     app = create_app()
     app.dependency_overrides[get_session] = fake_session
+    return app
+
+
+def _authenticated_app(
+    monkeypatch: MonkeyPatch,
+    admin_user: AdminUser | None = None,
+) -> FastAPI:
+    app = _app(monkeypatch)
+    app.dependency_overrides[authenticated_admin_user] = lambda: admin_user or _admin_user()
     return app
 
 
@@ -60,13 +82,21 @@ def test_core_crud_routers_are_registered(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_create_group_rejects_unknown_fields_before_service_call(monkeypatch: MonkeyPatch) -> None:
-    with TestClient(_app(monkeypatch)) as client:
+    with TestClient(_authenticated_app(monkeypatch)) as client:
         response = client.post(
             "/api/groups",
             json={"kind": "section", "name": "7-A", "unexpected": True},
         )
 
     assert response.status_code == 422
+
+
+def test_crud_requires_authenticated_admin(monkeypatch: MonkeyPatch) -> None:
+    with TestClient(_app(monkeypatch)) as client:
+        response = client.get("/api/groups")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "admin authentication required"
 
 
 def test_group_mutation_appends_audit_entry_and_commits(
@@ -104,6 +134,7 @@ def test_group_mutation_appends_audit_entry_and_commits(
 
     app = _app(monkeypatch)
     app.dependency_overrides[get_groups_service] = lambda: FakeGroupsService()
+    app.dependency_overrides[authenticated_admin_user] = lambda: _admin_user()
     with TestClient(app) as client:
         response = client.post(
             "/api/groups",
@@ -172,13 +203,23 @@ def test_people_list_passes_supervisor_scope_to_repository_layer(
                 )
             ]
 
-    app = _app(monkeypatch)
+    app = _authenticated_app(monkeypatch, _admin_user(AdminRole.SUPERVISOR, scope_group_ids=[group_id]))
     app.dependency_overrides[get_people_service] = lambda: FakePeopleService()
     with TestClient(app) as client:
         response = client.get(
-            f"/api/people?admin_role=supervisor&scope_group_id={group_id}",
+            "/api/people?admin_role=admin&scope_group_id=00000000-0000-0000-0000-000000000999",
         )
 
     assert response.status_code == 200
     assert response.json()[0]["display_name"] == "Maria Santos"
     assert captured_admin == CapturedAdmin(AdminRole.SUPERVISOR, [group_id])
+
+
+def test_supervisor_cannot_read_org_wide_groups(monkeypatch: MonkeyPatch) -> None:
+    app = _authenticated_app(monkeypatch, _admin_user(AdminRole.SUPERVISOR))
+
+    with TestClient(app) as client:
+        response = client.get("/api/groups")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "admin role cannot manage org-wide resources"

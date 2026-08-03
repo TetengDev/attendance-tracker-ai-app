@@ -8,12 +8,14 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.audit.chain import AuditEntry
 from backend.app.audit.service import append_audit_entry
 from backend.app.db.session import get_session
+from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.audit import AuditActorKind
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -31,6 +33,8 @@ class CrudErrorCode(str, Enum):
     NOT_FOUND = "NOT_FOUND"
     CONFLICT = "CONFLICT"
     INVALID_INPUT = "INVALID_INPUT"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    FORBIDDEN = "FORBIDDEN"
 
 
 @dataclass(frozen=True)
@@ -48,13 +52,11 @@ class RequestActor:
 
 def request_actor(
     request: Request,
-    x_admin_id: Annotated[str | None, Header(alias="x-admin-id")] = None,
     x_request_id: Annotated[str | None, Header(alias="x-request-id")] = None,
 ) -> RequestActor:
-    admin_id = UUID(x_admin_id) if x_admin_id else None
     client_host = request.client.host if request.client else None
     return RequestActor(
-        admin_id=admin_id,
+        admin_id=None,
         request_id=x_request_id or str(uuid4()),
         ip_address=client_host,
     )
@@ -64,6 +66,10 @@ ActorDep = Annotated[RequestActor, Depends(request_actor)]
 
 
 def translate_crud_error(exc: CrudError) -> HTTPException:
+    if exc.code == CrudErrorCode.UNAUTHORIZED:
+        return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message)
+    if exc.code == CrudErrorCode.FORBIDDEN:
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=exc.message)
     if exc.code == CrudErrorCode.NOT_FOUND:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.message)
     if exc.code == CrudErrorCode.CONFLICT:
@@ -73,6 +79,32 @@ def translate_crud_error(exc: CrudError) -> HTTPException:
 
 def handle_integrity_error(exc: IntegrityError) -> CrudError:
     return CrudError(CrudErrorCode.CONFLICT, "resource conflicts with existing data")
+
+
+async def authenticated_admin_user(
+    session: SessionDep,
+    x_admin_id: Annotated[str | None, Header(alias="x-admin-id")] = None,
+) -> AdminUser:
+    if x_admin_id is None:
+        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required"))
+    try:
+        admin_id = UUID(x_admin_id)
+    except ValueError as exc:
+        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "invalid admin identity")) from exc
+    admin_user = (
+        await session.execute(select(AdminUser).where(AdminUser.id == admin_id, AdminUser.is_active.is_(True)))
+    ).scalar_one_or_none()
+    if admin_user is None:
+        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required"))
+    return admin_user
+
+
+AdminUserDep = Annotated[AdminUser, Depends(authenticated_admin_user)]
+
+
+def require_org_admin(admin_user: AdminUser) -> None:
+    if AdminRole(admin_user.role) not in {AdminRole.OWNER, AdminRole.ADMIN, AdminRole.HR}:
+        raise CrudError(CrudErrorCode.FORBIDDEN, "admin role cannot manage org-wide resources")
 
 
 async def audited_mutation(

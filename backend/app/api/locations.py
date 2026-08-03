@@ -10,14 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.common import (
     ActorDep,
+    AdminUserDep,
     CrudError,
     CrudErrorCode,
     PageParams,
+    RequestActor,
     SessionDep,
     StrictSchema,
     apply_updates,
     audited_mutation,
     commit_or_422,
+    require_org_admin,
     snapshot,
     translate_crud_error,
 )
@@ -87,9 +90,14 @@ LocationsServiceDep = Annotated[LocationsService, Depends(get_locations_service)
 async def list_locations(
     session: SessionDep,
     service: LocationsServiceDep,
+    admin_user: AdminUserDep,
     page: Annotated[PageParams, Depends()],
 ) -> list[LocationRead]:
-    locations = await service.list(session, limit=page.limit, offset=page.offset)
+    try:
+        require_org_admin(admin_user)
+        locations = await service.list(session, limit=page.limit, offset=page.offset)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
     return [LocationRead.model_validate(location) for location in locations]
 
 
@@ -98,10 +106,13 @@ async def create_location(
     payload: LocationCreate,
     session: SessionDep,
     service: LocationsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> LocationRead:
     try:
+        require_org_admin(admin_user)
         location = await service.create(session, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -122,8 +133,10 @@ async def get_location(
     location_id: UUID,
     session: SessionDep,
     service: LocationsServiceDep,
+    admin_user: AdminUserDep,
 ) -> LocationRead:
     try:
+        require_org_admin(admin_user)
         return LocationRead.model_validate(await service.get(session, location_id))
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
@@ -135,12 +148,15 @@ async def update_location(
     payload: LocationUpdate,
     session: SessionDep,
     service: LocationsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> LocationRead:
     try:
+        require_org_admin(admin_user)
         location = await service.get(session, location_id)
         before = snapshot(location, LOCATION_FIELDS)
         location = await service.update(session, location, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -161,12 +177,15 @@ async def delete_location(
     location_id: UUID,
     session: SessionDep,
     service: LocationsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> None:
     try:
+        require_org_admin(admin_user)
         location = await service.get(session, location_id)
         before = snapshot(location, LOCATION_FIELDS)
         await service.delete(session, location)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,

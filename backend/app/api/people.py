@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.common import (
     ActorDep,
+    AdminUserDep,
     CrudError,
     CrudErrorCode,
     PageParams,
+    RequestActor,
     SessionDep,
     StrictSchema,
     apply_updates,
@@ -22,7 +24,7 @@ from backend.app.api.common import (
     translate_crud_error,
 )
 from backend.app.auth.rbac import scoped_people_query
-from backend.app.models.admin import AdminRole, AdminUser
+from backend.app.models.admin import AdminUser
 from backend.app.models.people import Person, PersonKind
 
 router = APIRouter(prefix="/api/people", tags=["people"])
@@ -65,23 +67,6 @@ class PersonRead(StrictSchema):
     preferred_name: str | None
     locale: str
     is_active: bool
-
-
-def current_admin_user(
-    x_admin_role: Annotated[AdminRole, Query(alias="admin_role")] = AdminRole.ADMIN,
-    x_scope_group_ids: Annotated[list[UUID] | None, Query(alias="scope_group_id")] = None,
-) -> AdminUser:
-    return AdminUser(
-        email="request-admin@example.invalid",
-        display_name="Request Admin",
-        password_hash="not-used",
-        role=x_admin_role,
-        scope_group_ids=x_scope_group_ids or [],
-        totp_secret=b"x" * 32 if x_admin_role in {AdminRole.OWNER, AdminRole.ADMIN, AdminRole.HR} else None,
-    )
-
-
-AdminDep = Annotated[AdminUser, Depends(current_admin_user)]
 
 
 class PeopleService:
@@ -140,7 +125,7 @@ PeopleServiceDep = Annotated[PeopleService, Depends(get_people_service)]
 async def list_people(
     session: SessionDep,
     service: PeopleServiceDep,
-    admin_user: AdminDep,
+    admin_user: AdminUserDep,
     page: Annotated[PageParams, Depends()],
     business_date: BusinessDateQuery,
 ) -> list[PersonRead]:
@@ -159,10 +144,12 @@ async def create_person(
     payload: PersonCreate,
     session: SessionDep,
     service: PeopleServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> PersonRead:
     try:
         person = await service.create(session, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -183,7 +170,7 @@ async def get_person(
     person_id: UUID,
     session: SessionDep,
     service: PeopleServiceDep,
-    admin_user: AdminDep,
+    admin_user: AdminUserDep,
     business_date: BusinessDateQuery,
 ) -> PersonRead:
     try:
@@ -199,7 +186,7 @@ async def update_person(
     payload: PersonUpdate,
     session: SessionDep,
     service: PeopleServiceDep,
-    admin_user: AdminDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
     business_date: BusinessDateQuery,
 ) -> PersonRead:
@@ -207,6 +194,7 @@ async def update_person(
         person = await service.get(session, admin_user, person_id, business_date=business_date)
         before = snapshot(person, PERSON_FIELDS)
         person = await service.update(session, person, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -227,7 +215,7 @@ async def delete_person(
     person_id: UUID,
     session: SessionDep,
     service: PeopleServiceDep,
-    admin_user: AdminDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
     business_date: BusinessDateQuery,
 ) -> None:
@@ -235,6 +223,7 @@ async def delete_person(
         person = await service.get(session, admin_user, person_id, business_date=business_date)
         before = snapshot(person, PERSON_FIELDS)
         await service.delete(session, person)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,

@@ -11,14 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.common import (
     ActorDep,
+    AdminUserDep,
     CrudError,
     CrudErrorCode,
     PageParams,
+    RequestActor,
     SessionDep,
     StrictSchema,
     apply_updates,
     audited_mutation,
     commit_or_422,
+    require_org_admin,
     snapshot,
     translate_crud_error,
 )
@@ -114,9 +117,14 @@ DevicesServiceDep = Annotated[DevicesService, Depends(get_devices_service)]
 async def list_devices(
     session: SessionDep,
     service: DevicesServiceDep,
+    admin_user: AdminUserDep,
     page: Annotated[PageParams, Depends()],
 ) -> list[DeviceRead]:
-    devices = await service.list(session, limit=page.limit, offset=page.offset)
+    try:
+        require_org_admin(admin_user)
+        devices = await service.list(session, limit=page.limit, offset=page.offset)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
     return [DeviceRead.model_validate(device) for device in devices]
 
 
@@ -125,10 +133,13 @@ async def create_device(
     payload: DeviceCreate,
     session: SessionDep,
     service: DevicesServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> DeviceRead:
     try:
+        require_org_admin(admin_user)
         device = await service.create(session, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -145,8 +156,14 @@ async def create_device(
 
 
 @router.get("/{device_id}", response_model=DeviceRead)
-async def get_device(device_id: UUID, session: SessionDep, service: DevicesServiceDep) -> DeviceRead:
+async def get_device(
+    device_id: UUID,
+    session: SessionDep,
+    service: DevicesServiceDep,
+    admin_user: AdminUserDep,
+) -> DeviceRead:
     try:
+        require_org_admin(admin_user)
         return DeviceRead.model_validate(await service.get(session, device_id))
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
@@ -158,12 +175,15 @@ async def update_device(
     payload: DeviceUpdate,
     session: SessionDep,
     service: DevicesServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> DeviceRead:
     try:
+        require_org_admin(admin_user)
         device = await service.get(session, device_id)
         before = snapshot(device, DEVICE_FIELDS)
         device = await service.update(session, device, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -184,12 +204,15 @@ async def delete_device(
     device_id: UUID,
     session: SessionDep,
     service: DevicesServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> None:
     try:
+        require_org_admin(admin_user)
         device = await service.get(session, device_id)
         before = snapshot(device, DEVICE_FIELDS)
         await service.delete(session, device)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,

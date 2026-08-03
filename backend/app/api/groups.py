@@ -9,14 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.common import (
     ActorDep,
+    AdminUserDep,
     CrudError,
     CrudErrorCode,
     PageParams,
+    RequestActor,
     SessionDep,
     StrictSchema,
     apply_updates,
     audited_mutation,
     commit_or_422,
+    require_org_admin,
     snapshot,
     translate_crud_error,
 )
@@ -89,9 +92,15 @@ GroupsServiceDep = Annotated[GroupsService, Depends(get_groups_service)]
 async def list_groups(
     session: SessionDep,
     service: GroupsServiceDep,
+    admin_user: AdminUserDep,
     page: Annotated[PageParams, Depends()],
 ) -> list[GroupRead]:
-    return [GroupRead.model_validate(group) for group in await service.list(session, limit=page.limit, offset=page.offset)]
+    try:
+        require_org_admin(admin_user)
+        groups = await service.list(session, limit=page.limit, offset=page.offset)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+    return [GroupRead.model_validate(group) for group in groups]
 
 
 @router.post("", response_model=GroupRead, status_code=201)
@@ -99,10 +108,13 @@ async def create_group(
     payload: GroupCreate,
     session: SessionDep,
     service: GroupsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> GroupRead:
     try:
+        require_org_admin(admin_user)
         group = await service.create(session, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -119,8 +131,14 @@ async def create_group(
 
 
 @router.get("/{group_id}", response_model=GroupRead)
-async def get_group(group_id: UUID, session: SessionDep, service: GroupsServiceDep) -> GroupRead:
+async def get_group(
+    group_id: UUID,
+    session: SessionDep,
+    service: GroupsServiceDep,
+    admin_user: AdminUserDep,
+) -> GroupRead:
     try:
+        require_org_admin(admin_user)
         return GroupRead.model_validate(await service.get(session, group_id))
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
@@ -132,12 +150,15 @@ async def update_group(
     payload: GroupUpdate,
     session: SessionDep,
     service: GroupsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> GroupRead:
     try:
+        require_org_admin(admin_user)
         group = await service.get(session, group_id)
         before = snapshot(group, GROUP_FIELDS)
         group = await service.update(session, group, payload)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
@@ -158,12 +179,15 @@ async def delete_group(
     group_id: UUID,
     session: SessionDep,
     service: GroupsServiceDep,
+    admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> None:
     try:
+        require_org_admin(admin_user)
         group = await service.get(session, group_id)
         before = snapshot(group, GROUP_FIELDS)
         await service.delete(session, group)
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
             actor,
