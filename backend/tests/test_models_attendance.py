@@ -16,6 +16,7 @@ from backend.app.models.attendance import (
     AttendanceOverride,
     AttendanceRecord,
     ExpectedAttendance,
+    canonical_attendance_grain,
     event_matches_grain,
     grain_for_expected,
     grain_for_override,
@@ -28,6 +29,7 @@ DEVICE_ID = UUID("00000000-0000-0000-0000-000000000003")
 EXPECTED_ID = UUID("00000000-0000-0000-0000-000000000004")
 OVERRIDE_ID = UUID("00000000-0000-0000-0000-000000000005")
 OTHER_SHIFT_ID = UUID("00000000-0000-0000-0000-000000000006")
+MERGED_PERSON_ID = UUID("00000000-0000-0000-0000-000000000007")
 BUSINESS_DATE = date(2026, 7, 31)
 CAPTURED_AT = datetime(2026, 7, 31, 0, 0, tzinfo=UTC)
 START_AT = datetime(2026, 7, 31, 8, 0, tzinfo=UTC)
@@ -208,10 +210,46 @@ def test_rebuild_preserves_override_effect_after_records_are_dropped() -> None:
     assert records[0].last_event_id is None
 
 
-def expected_attendance() -> ExpectedAttendance:
+def test_rebuild_attendance_records_collapses_merged_person_rows() -> None:
+    survivor_expected = expected_attendance()
+    duplicate_expected = expected_attendance(person_id=MERGED_PERSON_ID)
+    survivor_event = attendance_event(
+        event_id=10,
+        person_id=PERSON_ID,
+        business_date=BUSINESS_DATE,
+        shift_id=SHIFT_ID,
+        occurred_at=START_AT,
+    )
+    duplicate_event = attendance_event(
+        event_id=11,
+        person_id=MERGED_PERSON_ID,
+        business_date=BUSINESS_DATE,
+        shift_id=SHIFT_ID,
+        occurred_at=START_AT + timedelta(minutes=5),
+    )
+
+    records = rebuild_attendance_records(
+        [survivor_expected, duplicate_expected],
+        [duplicate_event, survivor_event],
+        [],
+        resolved_at=RESOLVED_AT,
+        merged_into={MERGED_PERSON_ID: PERSON_ID},
+    )
+
+    assert canonical_attendance_grain(
+        AttendanceGrain(MERGED_PERSON_ID, BUSINESS_DATE, SHIFT_ID),
+        {MERGED_PERSON_ID: PERSON_ID},
+    ).person_id == PERSON_ID
+    assert len(records) == 1
+    assert records[0].person_id == PERSON_ID
+    assert records[0].first_event_id == survivor_event.id
+    assert records[0].last_event_id == duplicate_event.id
+
+
+def expected_attendance(*, person_id: UUID = PERSON_ID) -> ExpectedAttendance:
     return ExpectedAttendance(
         id=EXPECTED_ID,
-        person_id=PERSON_ID,
+        person_id=person_id,
         business_date=BUSINESS_DATE,
         shift_id=SHIFT_ID,
         expected_start_at=START_AT,

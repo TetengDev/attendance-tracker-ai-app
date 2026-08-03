@@ -10,6 +10,7 @@ from backend.app.api.groups import router as groups_router
 from backend.app.api.health import router as health_router
 from backend.app.api.locations import router as locations_router
 from backend.app.api.people import router as people_router
+from backend.app.api.people_merge import router as people_merge_router
 from backend.app.audit.middleware import AuditMiddleware
 from backend.app.config import get_settings
 
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.add_middleware(AuditMiddleware)
     app.include_router(health_router)
     app.include_router(people_router)
+    app.include_router(people_merge_router)
     app.include_router(groups_router)
     app.include_router(locations_router)
     app.include_router(devices_router)
