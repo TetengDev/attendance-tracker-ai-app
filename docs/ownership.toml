@@ -236,6 +236,17 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-30"
+paths = [
+  "Makefile",
+  "backend/app/api/**",
+  "backend/app/cli/**",
+  "backend/app/main.py",
+  "backend/tests/test_core_crud_api.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
 
