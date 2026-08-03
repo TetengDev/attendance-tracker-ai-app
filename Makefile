@@ -1,4 +1,4 @@
-.PHONY: protocol test lint typecheck check-ownership audit-chain-export check ci
+.PHONY: protocol test lint typecheck check-ownership audit-chain-export seed check ci
 
 protocol:
 	python3 scripts/generate_protocol_ts.py
@@ -17,6 +17,9 @@ check-ownership:
 
 audit-chain-export:
 	uv run python -m backend.app.audit.export_cli
+
+seed:
+	uv run python -m backend.app.cli.seed
 
 check: protocol lint typecheck test check-ownership
 
