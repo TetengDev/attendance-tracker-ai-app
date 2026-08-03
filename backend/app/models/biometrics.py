@@ -169,6 +169,7 @@ class FaceEmbedding(EncryptedPayloadColumns, Base):
         ),
         CheckConstraint("model_name <> ''", name="model_name_non_empty"),
         CheckConstraint("model_version <> ''", name="model_version_non_empty"),
+        CheckConstraint("policy_version <> ''", name="policy_version_non_empty"),
         CheckConstraint("embedding_dimensions = 512", name="embedding_dimensions_512"),
         Index(
             "uq_face_embeddings_active_person_model",
@@ -198,6 +199,7 @@ class FaceEmbedding(EncryptedPayloadColumns, Base):
     )
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     model_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
     embedding_dimensions: Mapped[int] = mapped_column(nullable=False, default=512)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     quality: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)

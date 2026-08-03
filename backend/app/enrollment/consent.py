@@ -52,9 +52,30 @@ def require_embedding_matches_active_consent(
         raise ConsentEnforcementError("embedding person must match consent person")
     if embedding.consent_id != consent.id:
         raise ConsentEnforcementError("embedding must reference the active consent")
+    if embedding.policy_version != policy_version:
+        raise ConsentEnforcementError("embedding policy version must match the enrollment policy")
     if consent.consent_type != ConsentType.BIOMETRIC_PROCESSING:
         raise ConsentEnforcementError("biometric enrollment requires biometric processing consent")
     if not consent.is_active_for_policy(policy_version, as_of=as_of):
         raise ConsentEnforcementError(
             "active biometric enrollment consent is required for the current policy version"
         )
+
+
+async def add_consented_face_embedding(
+    session: AsyncSession,
+    embedding: FaceEmbedding,
+    consent: Consent,
+    *,
+    policy_version: str,
+    as_of: datetime,
+) -> FaceEmbedding:
+    require_embedding_matches_active_consent(
+        embedding,
+        consent,
+        policy_version=policy_version,
+        as_of=as_of,
+    )
+    session.add(embedding)
+    await session.flush()
+    return embedding
