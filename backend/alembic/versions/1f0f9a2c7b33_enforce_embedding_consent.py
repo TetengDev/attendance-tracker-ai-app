@@ -22,9 +22,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    enrollment_time timestamptz;
+    write_time timestamptz;
 BEGIN
-    enrollment_time := COALESCE(NEW.created_at, now());
+    write_time := statement_timestamp();
 
     IF NOT EXISTS (
         SELECT 1
@@ -33,8 +33,8 @@ BEGIN
           AND c.person_id = NEW.person_id
           AND c.consent_type = 'biometric_processing'
           AND c.policy_version = NEW.policy_version
-          AND c.granted_at <= enrollment_time
-          AND (c.revoked_at IS NULL OR enrollment_time < c.revoked_at)
+          AND c.granted_at <= write_time
+          AND (c.revoked_at IS NULL OR write_time < c.revoked_at)
     ) THEN
         RAISE EXCEPTION
             'active biometric enrollment consent is required for the current policy version'

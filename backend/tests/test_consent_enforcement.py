@@ -211,4 +211,6 @@ def test_embedding_consent_migration_adds_db_trigger() -> None:
     assert "c.person_id = NEW.person_id" in source
     assert "c.consent_type = 'biometric_processing'" in source
     assert "c.policy_version = NEW.policy_version" in source
-    assert "c.revoked_at IS NULL OR enrollment_time < c.revoked_at" in source
+    assert "write_time := statement_timestamp()" in source
+    assert "c.revoked_at IS NULL OR write_time < c.revoked_at" in source
+    assert "COALESCE(NEW.created_at" not in source
