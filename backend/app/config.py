@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     biometric_kek: SecretStr
+    audit_chain_export_dir: str | None = None
+    audit_chain_export_environment: str = "production"
+    audit_chain_export_deployment_id: str | None = None
 
 
 @lru_cache

@@ -88,6 +88,19 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-103"
+paths = [
+  ".env.example",
+  "Makefile",
+  "backend/app/audit/**",
+  "backend/app/config.py",
+  "backend/tests/test_audit_export.py",
+  "docs/audit-chain-export.md",
+  "docs/ownership.toml",
+  "infra/cron/audit-chain-export",
+]
+
+[[ownership]]
 issue = "TEN-11"
 paths = [
   "CLAUDE.md",

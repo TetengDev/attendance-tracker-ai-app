@@ -1,0 +1,7 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Run on the production host once per day at 02:17 local time.
+# AUDIT_CHAIN_EXPORT_DIR must be an absolute path outside the app checkout,
+# ideally a mounted off-box/write-once destination.
+17 2 * * * cd /opt/attendance-tracker-ai-app && /usr/bin/env AUDIT_CHAIN_EXPORT_DIR=/mnt/audit-chain-heads make audit-chain-export
