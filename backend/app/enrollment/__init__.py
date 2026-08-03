@@ -1,2 +1,1 @@
 """Enrollment image validation helpers."""
-
