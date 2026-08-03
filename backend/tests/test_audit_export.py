@@ -12,6 +12,7 @@ from backend.app.audit.export import (
     export_audit_chain_record,
     validate_export_destination,
 )
+from backend.app.audit.export_cli import REPOSITORY_ROOT
 
 HASH = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
 
@@ -54,6 +55,15 @@ def test_export_rejects_repo_destination(tmp_path: Path) -> None:
 
     with pytest.raises(AuditChainExportError, match="inside the app repo"):
         validate_export_destination(export_dir, repository_root=repo)
+
+
+def test_cli_repository_root_is_source_tree_not_caller_cwd(tmp_path: Path) -> None:
+    repo_export_dir = REPOSITORY_ROOT / ".audit-chain-heads"
+
+    with pytest.raises(AuditChainExportError, match="inside the app repo"):
+        validate_export_destination(repo_export_dir, repository_root=REPOSITORY_ROOT)
+
+    assert not repo_export_dir.is_relative_to(tmp_path)
 
 
 def test_export_requires_existing_directory(tmp_path: Path) -> None:
