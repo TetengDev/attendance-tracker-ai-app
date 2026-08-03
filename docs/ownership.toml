@@ -60,6 +60,13 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-104"
+paths = [
+  ".codex/**",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-101"
 paths = [
   "backend/alembic/**",
