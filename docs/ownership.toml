@@ -215,6 +215,21 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-34"
+paths = [
+  "backend/alembic/**",
+  "backend/app/api/enrollment.py",
+  "backend/app/api/ws_enroll.py",
+  "backend/app/main.py",
+  "backend/app/models/biometrics.py",
+  "backend/tests/test_enrollment_api.py",
+  "backend/tests/test_models_biometrics.py",
+  "pyproject.toml",
+  "uv.lock",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "TEN-24"
 paths = [
   "backend/app/models/devices.py",
