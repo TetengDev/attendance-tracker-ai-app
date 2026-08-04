@@ -17,6 +17,7 @@ import os
 
 SECRET_KEY = "kek.test:" + base64.urlsafe_b64encode(bytes([9]) * 32).decode().rstrip("=")
 os.environ["BIOMETRIC_KEK"] = SECRET_KEY
+os.environ["JWT_SECRET"] = SECRET_KEY
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost:5432/attendance"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
@@ -33,8 +34,11 @@ from pytest import MonkeyPatch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.enrollment import get_face_engine, get_gallery_index
+from backend.app.auth.device import get_device_token_key, hash_device_token
 from backend.app.auth.passwords import hash_admin_password
 from backend.app.config import get_settings
+
+get_settings.cache_clear()
 from backend.app.db.session import get_session
 from backend.app.errors import ErrorCode
 from backend.app.face.gallery import GalleryEntry, GalleryIndex
@@ -60,7 +64,7 @@ RAW_TOKEN = "secret-device-token"
 
 
 def _make_jwt(device_id: UUID = DEVICE_ID, token: str = RAW_TOKEN) -> str:
-    return jwt.encode({"sub": str(device_id), "token": token}, SECRET_KEY, algorithm="HS256")
+    return jwt.encode({"sub": str(device_id), "token": token, "type": "scan_session"}, SECRET_KEY, algorithm="HS256")
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +80,7 @@ class MockSession:
             mode=DeviceMode.FIXED,
             form_factor=DeviceFormFactor.TABLET,
             direction=DeviceDirection.BIDIRECTIONAL,
-            token_hash=hash_admin_password(RAW_TOKEN),
+            token_hash=hash_device_token(RAW_TOKEN, get_device_token_key(SECRET_KEY)),
             token_display_prefix="tst_dev",
             allowed_cidrs=["127.0.0.1/32"],
             settings_override={},
@@ -291,6 +295,9 @@ class TestWebSocketHeartbeat:
                     "clock_skew_ms": 12,
                 }
             )
+            rotation = ws.receive_json()
+            assert rotation["type"] == "token_rotation"
+            assert "device_token" in rotation
 
         assert any(item.__class__.__name__ == "DeviceHeartbeat" for item in mock_session.added)
         assert mock_session.committed is True
@@ -320,6 +327,9 @@ class TestWebSocketHeartbeat:
                     "clock_skew_ms": 12,
                 }
             )
+            rotation = ws.receive_json()
+            assert rotation["type"] == "token_rotation"
+
             push = ws.receive_json()
             assert push["type"] == "settings_push"
             assert push["settings_version"] == 2

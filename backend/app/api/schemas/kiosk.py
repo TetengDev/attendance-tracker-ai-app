@@ -27,6 +27,7 @@ class ServerMessageType(str, Enum):
     SETTINGS_PUSH = "settings_push"
     BACKPRESSURE = "backpressure"
     ERROR = "error"
+    TOKEN_ROTATION = "token_rotation"
 
 
 class Hello(StrictModel):
@@ -131,4 +132,9 @@ class ErrorMessage(StrictModel):
     error: ErrorBody
 
 
-ServerMessage = Ready | Detected | Checking | Result | SettingsPush | Backpressure | ErrorMessage
+class TokenRotation(StrictModel):
+    type: Literal[ServerMessageType.TOKEN_ROTATION] = ServerMessageType.TOKEN_ROTATION
+    device_token: str
+
+
+ServerMessage = Ready | Detected | Checking | Result | SettingsPush | Backpressure | ErrorMessage | TokenRotation

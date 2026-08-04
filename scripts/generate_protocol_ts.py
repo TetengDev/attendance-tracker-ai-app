@@ -16,7 +16,8 @@ export type ServerMessageType =
   | "result"
   | "settings_push"
   | "backpressure"
-  | "error";
+  | "error"
+  | "token_rotation";
 
 export interface Hello {
   type: "hello";
@@ -128,6 +129,11 @@ export interface ErrorMessage {
   error: ErrorBody;
 }
 
+export interface TokenRotation {
+  type: "token_rotation";
+  device_token: string;
+}
+
 export type ServerMessage =
   | Ready
   | Detected
@@ -135,7 +141,8 @@ export type ServerMessage =
   | Result
   | SettingsPush
   | Backpressure
-  | ErrorMessage;
+  | ErrorMessage
+  | TokenRotation;
 """
 
 
