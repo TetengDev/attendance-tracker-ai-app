@@ -9,7 +9,7 @@ Single organization, single tenant — many devices across many locations. The c
 **Tech stack:** FastAPI (Python 3.13) · Postgres 17 · Redis 7 · ARQ behind a `JobQueue` protocol · React 19 + Vite 8 + TS · ONNX Runtime (SCRFD + ArcFace + MiniFASNet) · Docker Compose + Caddy
 **Environment:** dev `https://localhost` (Caddy internal CA) · prod: self-hosted on the customer's LAN
 
-> **Status: pre-implementation.** The architecture is in `docs/PLAN.md` (**revision 2**, rewritten after an adversarial architecture review and a source-verified fact-check). No application code exists yet.
+> **Status: active development — Phase 4 next.** Phases 0 (scaffold), 0.5 (contracts), and 1 (face-engine spike + CLI verification) are complete and merged. The server scan pipeline (TEN-40) and WebSocket scan endpoint (TEN-41) are also merged. Phase 2 data model, auth, audit, consent, and enrollment are implemented. The architecture is in `docs/PLAN.md` (**revision 2**).
 >
 > **Read `docs/PLAN.md` before writing anything.** In particular **§2 Contracts** — it holds the settings registry, `FaceEngine` Protocol, WS message contract, error taxonomy, natural keys, and classification decision table as *copyable specifications*. Copy them; do not invent your own.
 >
@@ -56,7 +56,7 @@ The reference implementation uses `transforms.ToTensor()`, but the Silent-Face-A
 
 ## Development Commands
 
-> Not yet implemented — build these in Phase 0. Keep this section accurate as they land.
+> Implemented in Phase 0. Keep this section accurate as commands change.
 
 - `docker compose -f infra/compose.yml up -d` — Postgres 17, Redis (two policies), Caddy, Mailpit
 - `make dev` — backend on :8000 + both frontends
@@ -87,15 +87,18 @@ The reference implementation uses `transforms.ToTensor()`, but the Silent-Face-A
 
 ## Current Work Context
 
-**Phase 0 (scaffold), in progress.** Done: revision-2 plan at `docs/PLAN.md`, `.gitignore`, agent teams, this file.
+**Completed phases:**
 
-Next: uv project pinned to **3.13**, Docker Compose, Caddy, toolchain, bun workspace — then **Phase 0.5 (contracts)**, which blocks all parallel work, then **Phase 1, the face-engine spike**.
+| Phase | Key PRs | Gate status |
+|---|---|---|
+| **0 — Scaffold** | #1–#12 | ✅ Compose, FastAPI health, bun workspace, quality-gate CI, docs |
+| **0.5 — Contracts** | #1–#2, #14–#23, #28–#36 | ✅ Settings schema, FaceEngine protocol, WS contract, error taxonomy, DDL, ownership CI, models, auth, audit, consent, enrollment |
+| **1 — Face engine spike** | #38 (TEN-94), #41 (TEN-106) | ✅ ONNX engine (SCRFD + ArcFace + MiniFASNet), CLI bench/evaluate/liveness_check, smoke test. **Hallway test still pending** (~20 volunteers) |
+| **Scan pipeline** | #39 (TEN-40), #40 (TEN-41) | ✅ Server pipeline (detect→liveness→embed→match→decide), WebSocket scan endpoint, burst frame processing |
 
-**Phase 1 is a hard gate.** No UI work starts until it proves: total pipeline latency, an ROC at FAR ≤ 0.1% **extrapolated to N=5000**, liveness separating real from print and screen replay, **and a real-lighting hallway test with ~20 volunteers**. The hallway test exists because the lab gate only proves the least likely thing to fail.
+**Next: Phase 4 — Kiosk scan loop, device auth, PIN/QR fallback, offline queue, TLS.**
 
-Known human-blocked items: TLS certs for LAN kiosks (`getUserMedia` needs a secure context), real faces for threshold tuning, the commercial-use decision on `buffalo_l`, and NPC registration + a named DPO.
-
-**The Linear backlog is currently revision-1 vintage.** TEN-16 encodes the refuted MiniFASNet preprocessing, TEN-5/TEN-20 encode Python 3.12 and pgvector, and there are no issues for Phase 0.5. Reconcile before dispatching agents.
+Known human-blocked items: TLS certs for LAN kiosks (`getUserMedia` needs a secure context), real faces for threshold tuning, the commercial-use decision on `buffalo_l`, NPC registration + a named DPO, and the hallway test with ~20 volunteers.
 
 ## Agent Workflow
 
