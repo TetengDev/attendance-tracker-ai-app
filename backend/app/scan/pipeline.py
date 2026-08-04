@@ -159,6 +159,9 @@ class CooldownChecker:
         """Return True if the unknown-face rate limit is exceeded."""
         return False
 
+    def reset(self) -> None:
+        """Clear all tracking state (used in tests)."""
+
 
 # ---------------------------------------------------------------------------
 # Person lookup (DB-backed in production)

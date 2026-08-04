@@ -25,12 +25,14 @@ class InMemoryCooldownChecker(CooldownChecker):
     def __init__(self) -> None:
         # cooldown: key -> occurred_at
         self._cooldowns: dict[str, datetime] = {}
-        # impossible travel: person_id -> (location_id, ts)
-        self._last_scan: dict[UUID, tuple[UUID, datetime]] = {}
+        # impossible travel: person_id -> (location_id, ts, location_source)
+        self._last_scan: dict[UUID, tuple[UUID, datetime, str]] = {}
         # rate limit: device_id -> list of monotonic timestamps
         self._rate_log: dict[UUID, list[float]] = {}
         # unknown rate: device_id -> list of monotonic timestamps
         self._unknown_log: dict[UUID, list[float]] = {}
+        # unknown lockout: device_id -> lockout_expires_at
+        self._lockouts: dict[UUID, float] = {}
 
     def _cooldown_key(
         self,
@@ -87,7 +89,7 @@ class InMemoryCooldownChecker(CooldownChecker):
             self._cooldowns[key] = occurred_at
 
         # Update last-scan for impossible-travel
-        self._last_scan[person_id] = (location_id, occurred_at)
+        self._last_scan[person_id] = (location_id, occurred_at, location_source)
 
     def check_impossible_travel(
         self,
@@ -105,7 +107,10 @@ class InMemoryCooldownChecker(CooldownChecker):
         if last is None:
             return False
 
-        last_location, last_ts = last
+        last_location, last_ts, last_source = last
+        # Only check when the last event also has location_source = device_fixed
+        if last_source != "device_fixed":
+            return False
         if last_location == location_id:
             return False
 
@@ -139,17 +144,27 @@ class InMemoryCooldownChecker(CooldownChecker):
         unknown_lockout_seconds: int,
     ) -> bool:
         now = time.monotonic()
+
+        # Check if currently locked out
+        lockout_expiry = self._lockouts.get(device_id)
+        if lockout_expiry is not None:
+            if now < lockout_expiry:
+                return True
+            else:
+                del self._lockouts[device_id]
+
         log = self._unknown_log.setdefault(device_id, [])
-        # Trim entries older than lockout window
-        cutoff = now - unknown_lockout_seconds
+        # Trim entries older than 60 seconds
+        cutoff = now - 60.0
         self._unknown_log[device_id] = [t for t in log if t > cutoff]
         log = self._unknown_log[device_id]
 
-        # Check within the per-minute window
-        minute_cutoff = now - 60.0
-        recent = [t for t in log if t > minute_cutoff]
-        if len(recent) >= unknown_rate_per_minute:
+        if len(log) >= unknown_rate_per_minute:
+            # Trigger lockout
+            self._lockouts[device_id] = now + unknown_lockout_seconds
+            self._unknown_log[device_id] = []
             return True
+
         log.append(now)
         return False
 
@@ -159,6 +174,99 @@ class InMemoryCooldownChecker(CooldownChecker):
         self._last_scan.clear()
         self._rate_log.clear()
         self._unknown_log.clear()
+        self._lockouts.clear()
 
 
-global_cooldown_checker = InMemoryCooldownChecker()
+class CooldownCheckerProxy(CooldownChecker):
+    """Proxy that delegates to RedisCooldownChecker in production, or InMemory in tests."""
+
+    def __init__(self) -> None:
+        self._delegate: CooldownChecker | None = None
+
+    @property
+    def delegate(self) -> CooldownChecker:
+        if self._delegate is None:
+            import sys
+            if "pytest" in sys.modules:
+                self._delegate = InMemoryCooldownChecker()
+            else:
+                from backend.app.scan.limits import RedisCooldownChecker
+                self._delegate = RedisCooldownChecker()
+        return self._delegate
+
+    def check_cooldown(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        cooldown_seconds: int,
+        cooldown_scope: str,
+        device_id: UUID | None = None,
+    ) -> datetime | None:
+        return self.delegate.check_cooldown(
+            person_id,
+            location_id,
+            location_source,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_scope=cooldown_scope,
+            device_id=device_id,
+        )
+
+    def set_cooldown(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        occurred_at: datetime,
+        cooldown_seconds: int,
+        cooldown_scope: str,
+        device_id: UUID | None = None,
+    ) -> None:
+        self.delegate.set_cooldown(
+            person_id,
+            location_id,
+            location_source,
+            occurred_at=occurred_at,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_scope=cooldown_scope,
+            device_id=device_id,
+        )
+
+    def check_impossible_travel(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        min_inter_location_seconds: int,
+    ) -> bool:
+        return self.delegate.check_impossible_travel(
+            person_id,
+            location_id,
+            location_source,
+            min_inter_location_seconds=min_inter_location_seconds,
+        )
+
+    def check_rate_limit(self, device_id: UUID, *, rate_per_second: int) -> bool:
+        return self.delegate.check_rate_limit(device_id, rate_per_second=rate_per_second)
+
+    def check_unknown_rate(
+        self,
+        device_id: UUID,
+        *,
+        unknown_rate_per_minute: int,
+        unknown_lockout_seconds: int,
+    ) -> bool:
+        return self.delegate.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=unknown_rate_per_minute,
+            unknown_lockout_seconds=unknown_lockout_seconds,
+        )
+
+    def reset(self) -> None:
+        self.delegate.reset()
+
+
+global_cooldown_checker = CooldownCheckerProxy()
