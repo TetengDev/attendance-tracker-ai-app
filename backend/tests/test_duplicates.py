@@ -112,11 +112,13 @@ class FakeSession:
         pass
 
 
-def make_mock_embedding(person_id: UUID, emb_id: UUID, vector: np.ndarray) -> FaceEmbedding:
-    payload = encrypt_embedding(vector, aad=f"face-embedding:{person_id}:{emb_id}".encode())
+def make_mock_embedding(person_id: UUID, emb_id: UUID, vector: np.ndarray, asset_id: UUID | None = None) -> FaceEmbedding:
+    a_id = asset_id or uuid4()
+    payload = encrypt_embedding(vector, aad=f"face-embedding:{person_id}:{a_id}".encode())
     return FaceEmbedding(
         id=emb_id,
         person_id=person_id,
+        asset_id=a_id,
         envelope_version=payload.version,
         payload_alg=payload.payload_alg,
         dek_wrap_alg=payload.dek_wrap_alg,
@@ -373,7 +375,9 @@ def test_upload_duplicate_face_returns_409_conflict(monkeypatch: pytest.MonkeyPa
         )
 
     assert response.status_code == 409
-    assert f"Face already enrolled under person {alice_id}" in response.json()["detail"]
+    error_wrapper = response.json()["detail"]
+    assert error_wrapper["error"]["code"] == "DUPLICATE_ENROLLMENT"
+    assert error_wrapper["error"]["details"]["person_id"] == str(alice_id)
 
 
 def cast_session(fake: FakeSession) -> AsyncSession:

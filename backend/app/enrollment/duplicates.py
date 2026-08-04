@@ -40,7 +40,7 @@ async def load_active_gallery_entries(db: AsyncSession) -> list[GalleryEntry]:
         )
         try:
             # Use the correct AAD matching enrollment.py
-            aad = f"face-embedding:{emb.person_id}:{emb.id}".encode()
+            aad = f"face-embedding:{emb.person_id}:{emb.asset_id}".encode()
             vector = decrypt_embedding(payload, aad=aad)
             entries.append(
                 GalleryEntry(

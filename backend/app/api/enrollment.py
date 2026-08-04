@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 import numpy as np
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,9 @@ from backend.app.enrollment.consent import (
     add_consented_face_embedding,
     require_active_biometric_enrollment_consent,
 )
+from backend.app.enrollment.duplicates import check_duplicate_enrollment
 from backend.app.enrollment.validate import EnrollmentValidationResult, validate_enrollment_image
+from backend.app.errors import ErrorCode, make_error
 from backend.app.face.gallery import (
     GalleryEntry,
     GalleryIndex,
@@ -486,7 +488,6 @@ async def _commit_uploads(
             now=datetime.now(UTC),
         )
         if commit.gallery_entries:
-            from backend.app.enrollment.duplicates import check_duplicate_enrollment
             vectors = [entry.vector for entry in commit.gallery_entries]
             conflicts = await check_duplicate_enrollment(
                 session,
@@ -496,9 +497,13 @@ async def _commit_uploads(
             )
             if conflicts:
                 first = conflicts[0]
-                raise CrudError(
-                    CrudErrorCode.CONFLICT,
-                    f"Face already enrolled under person {first['person_id']} ({first['display_name']})",
+                raise HTTPException(
+                    status_code=409,
+                    detail=make_error(
+                        ErrorCode.DUPLICATE_ENROLLMENT,
+                        f"Face already enrolled under person {first['person_id']} ({first['display_name']})",
+                        details=first,
+                    ),
                 )
         response = _merge_rejected_uploads(commit.response, rejected_uploads)
         actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
