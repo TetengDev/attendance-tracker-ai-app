@@ -29,7 +29,9 @@ def test_readiness_gate_names_required_gallery_version_comparison() -> None:
 
 
 def test_onnx_threading_is_explicit_runtime_configuration() -> None:
-    assert DEFAULT_SCAN_TOPOLOGY.onnx_threading_policy is OnnxThreadingPolicy.EXPLICIT_RUNTIME_CONFIG
+    assert (
+        DEFAULT_SCAN_TOPOLOGY.onnx_threading_policy is OnnxThreadingPolicy.EXPLICIT_RUNTIME_CONFIG
+    )
 
 
 def test_estimated_scan_memory_budget_is_explicit() -> None:

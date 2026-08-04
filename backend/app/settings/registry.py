@@ -71,7 +71,10 @@ SETTINGS_SCHEMA: dict[str, SettingSpec] = {
     "face.match_margin": SettingSpec("float", 0.05, "O", min=0.0, max=0.30),
     "face.low_confidence_threshold": SettingSpec("float", 0.38, "O", min=0.20, max=0.80),
     "face.low_confidence_action": SettingSpec(
-        "enum", LowConfidenceAction.REJECT.value, "O·L", enum=tuple(e.value for e in LowConfidenceAction)
+        "enum",
+        LowConfidenceAction.REJECT.value,
+        "O·L",
+        enum=tuple(e.value for e in LowConfidenceAction),
     ),
     "face.det_score_min": SettingSpec("float", 0.60, "O", min=0.10, max=0.99),
     "face.det_size": SettingSpec("int", 384, "O", min=128, max=800),
@@ -128,7 +131,10 @@ SETTINGS_SCHEMA: dict[str, SettingSpec] = {
     "attendance.absent_after_minutes": SettingSpec("int", 60, "O·L", min=5, max=1440),
     "attendance.min_dwell_minutes": SettingSpec("int", 5, "O·L", min=0, max=480),
     "attendance.pairing_strategy": SettingSpec(
-        "enum", PairingStrategy.FIRST_LAST.value, "O·L", enum=tuple(e.value for e in PairingStrategy)
+        "enum",
+        PairingStrategy.FIRST_LAST.value,
+        "O·L",
+        enum=tuple(e.value for e in PairingStrategy),
     ),
     "attendance.day_boundary_hour": SettingSpec("int", 0, "O·L", min=0, max=23),
     "attendance.auto_close_enabled": SettingSpec("bool", False, "O·L"),

@@ -12,7 +12,9 @@ AUDIT_CHAIN_LOCK_KEY = 29_2026
 async def append_audit_entry(session: AsyncSession, entry: AuditEntry) -> AuditLog:
     """Append one audit row under a transaction-scoped Postgres advisory lock."""
 
-    await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": AUDIT_CHAIN_LOCK_KEY})
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": AUDIT_CHAIN_LOCK_KEY}
+    )
     prev_hash = await latest_audit_hash(session)
     row = make_audit_log(entry, prev_hash=prev_hash)
     session.add(row)

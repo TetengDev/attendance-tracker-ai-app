@@ -166,7 +166,9 @@ class FakeFaceEngine:
         rng = np.random.default_rng(seed)
         vector = rng.standard_normal(512).astype(np.float32)
         vector /= np.linalg.norm(vector)
-        return Embedding(vector=vector, model_name=self._model_name, model_version=self._model_version)
+        return Embedding(
+            vector=vector, model_name=self._model_name, model_version=self._model_version
+        )
 
     @property
     def model_version(self) -> str:

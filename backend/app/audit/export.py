@@ -97,11 +97,17 @@ def validate_export_destination(
     if repository_root is not None:
         resolved_repository = repository_root.resolve()
         if _is_relative_to(resolved_destination, resolved_repository):
-            raise AuditChainExportError("audit chain exports must not be written inside the app repo")
+            raise AuditChainExportError(
+                "audit chain exports must not be written inside the app repo"
+            )
     if not resolved_destination.exists():
-        raise AuditChainExportError(f"audit chain export directory does not exist: {resolved_destination}")
+        raise AuditChainExportError(
+            f"audit chain export directory does not exist: {resolved_destination}"
+        )
     if not resolved_destination.is_dir():
-        raise AuditChainExportError(f"audit chain export destination is not a directory: {resolved_destination}")
+        raise AuditChainExportError(
+            f"audit chain export destination is not a directory: {resolved_destination}"
+        )
     return resolved_destination
 
 

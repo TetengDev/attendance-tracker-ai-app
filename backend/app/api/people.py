@@ -79,7 +79,9 @@ class PeopleService:
         limit: int,
         offset: int,
     ) -> list[Person]:
-        query = scoped_people_query(admin_user, business_date=business_date).limit(limit).offset(offset)
+        query = (
+            scoped_people_query(admin_user, business_date=business_date).limit(limit).offset(offset)
+        )
         return list((await session.execute(query)).scalars())
 
     async def get(
@@ -90,9 +92,9 @@ class PeopleService:
         *,
         business_date: date,
     ) -> Person:
-        query: Select[tuple[Person]] = scoped_people_query(admin_user, business_date=business_date).where(
-            Person.id == person_id
-        )
+        query: Select[tuple[Person]] = scoped_people_query(
+            admin_user, business_date=business_date
+        ).where(Person.id == person_id)
         person = (await session.execute(query)).scalar_one_or_none()
         if person is None:
             raise CrudError(CrudErrorCode.NOT_FOUND, "person not found")

@@ -176,13 +176,19 @@ class GalleryIndex:
 
     def remove_embedding(self, embedding_id: UUID) -> bool:
         with self._lock:
-            matches = [index for index, existing in enumerate(self._embedding_ids) if existing == embedding_id]
+            matches = [
+                index
+                for index, existing in enumerate(self._embedding_ids)
+                if existing == embedding_id
+            ]
             if not matches:
                 return False
             keep_mask = np.ones(len(self._embedding_ids), dtype=bool)
             keep_mask[matches[0]] = False
             self._vectors = self._vectors[keep_mask]
-            self._person_ids = tuple(person_id for index, person_id in enumerate(self._person_ids) if keep_mask[index])
+            self._person_ids = tuple(
+                person_id for index, person_id in enumerate(self._person_ids) if keep_mask[index]
+            )
             self._embedding_ids = tuple(
                 existing for index, existing in enumerate(self._embedding_ids) if keep_mask[index]
             )
@@ -267,7 +273,9 @@ class GalleryIndex:
             count = min(k, len(scores))
             top_indexes = np.argpartition(scores, -count)[-count:]
             ordered_indexes = top_indexes[np.argsort(scores[top_indexes])[::-1]]
-            candidates = tuple(self._candidate_for_index(index, scores) for index in ordered_indexes)
+            candidates = tuple(
+                self._candidate_for_index(index, scores) for index in ordered_indexes
+            )
             top1_index = int(np.argmax(scores))
             top1 = self._candidate_for_index(top1_index, scores)
             other_mask = np.array(

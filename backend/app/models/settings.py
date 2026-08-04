@@ -65,9 +65,7 @@ class Setting(Base):
 
 class SettingsVersion(Base):
     __tablename__ = "settings_versions"
-    __table_args__ = (
-        CheckConstraint("current_version > 0", name="current_version_positive"),
-    )
+    __table_args__ = (CheckConstraint("current_version > 0", name="current_version_positive"),)
 
     namespace: Mapped[str] = mapped_column(
         String(64),

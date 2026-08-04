@@ -81,7 +81,9 @@ def assert_topology_contract(topology: ScanRuntimeTopology = DEFAULT_SCAN_TOPOLO
     if not topology.scan.owns_models:
         raise ValueError("scan processes own the face models")
     if topology.scan.count < 2:
-        raise ValueError("at least two scan processes are required for rolling restart availability")
+        raise ValueError(
+            "at least two scan processes are required for rolling restart availability"
+        )
     if topology.queue_boundary is not QueueBoundary.SHARED_QUEUE:
         raise ValueError("scan work must cross the shared queue boundary")
     if topology.unavailable_policy is not ScanUnavailablePolicy.RETURN_ERROR_FAST:

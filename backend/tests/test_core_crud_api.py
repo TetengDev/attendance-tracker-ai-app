@@ -45,7 +45,9 @@ async def _skip_middleware_audit(_entry: object) -> None:
     return None
 
 
-def _admin_user(role: AdminRole = AdminRole.ADMIN, *, scope_group_ids: list[UUID] | None = None) -> AdminUser:
+def _admin_user(
+    role: AdminRole = AdminRole.ADMIN, *, scope_group_ids: list[UUID] | None = None
+) -> AdminUser:
     return AdminUser(
         id=UUID("00000000-0000-0000-0000-0000000000ad"),
         email="admin@example.test",
@@ -213,7 +215,9 @@ def test_people_list_passes_supervisor_scope_to_repository_layer(
                 )
             ]
 
-    app = _authenticated_app(monkeypatch, _admin_user(AdminRole.SUPERVISOR, scope_group_ids=[group_id]))
+    app = _authenticated_app(
+        monkeypatch, _admin_user(AdminRole.SUPERVISOR, scope_group_ids=[group_id])
+    )
     app.dependency_overrides[get_people_service] = lambda: FakePeopleService()
     with TestClient(app) as client:
         response = client.get(

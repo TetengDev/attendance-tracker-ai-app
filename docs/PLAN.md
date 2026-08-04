@@ -147,37 +147,52 @@ Everything in this section is a specification to **copy verbatim**, not a descri
 `backend/app/face/protocol.py`. Images are **BGR uint8 HWC** throughout — never RGB, never float, at any boundary.
 
 ```python
-Bbox = tuple[int, int, int, int]          # x1, y1, x2, y2
-Landmarks = np.ndarray                     # (5, 2) float32
+Bbox = tuple[int, int, int, int]  # x1, y1, x2, y2
+Landmarks = np.ndarray  # (5, 2) float32
+
 
 @dataclass(frozen=True)
 class Detection:
-    bbox: Bbox; det_score: float; landmarks: Landmarks
-    blur_var: float; brightness: float
+    bbox: Bbox
+    det_score: float
+    landmarks: Landmarks
+    blur_var: float
+    brightness: float
+
 
 @dataclass(frozen=True)
 class LivenessResult:
-    live_score: float                      # combined[1] after summing both softmaxes / 2
+    live_score: float  # combined[1] after summing both softmaxes / 2
     per_model: tuple[float, ...]
-    passed: bool                           # live_score >= liveness.threshold
+    passed: bool  # live_score >= liveness.threshold
+
 
 @dataclass(frozen=True)
 class Embedding:
-    vector: np.ndarray                     # (512,) float32, L2-normalized
-    model_name: str; model_version: str
+    vector: np.ndarray  # (512,) float32, L2-normalized
+    model_name: str
+    model_version: str
+
 
 class FaceEngine(Protocol):
     def detect(self, bgr: np.ndarray) -> list[Detection]: ...
-    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...   # -> (112,112,3) BGR
+    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...  # -> (112,112,3) BGR
     def liveness(self, bgr: np.ndarray, bbox: Bbox) -> LivenessResult: ...
     def embed(self, aligned: np.ndarray) -> Embedding: ...
     @property
     def model_version(self) -> str: ...
 
+
 class FakeFaceEngine(FaceEngine):
-    def next_result(self, *, person: str | None = None, score: float = 0.9,
-                    liveness: float = 0.95, n_faces: int = 1,
-                    det_score: float = 0.9) -> None: ...
+    def next_result(
+        self,
+        *,
+        person: str | None = None,
+        score: float = 0.9,
+        liveness: float = 0.95,
+        n_faces: int = 1,
+        det_score: float = 0.9,
+    ) -> None: ...
     def queue_results(self, results: list[dict]) -> None: ...
     def reset(self) -> None: ...
 ```

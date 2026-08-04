@@ -200,9 +200,7 @@ async def test_add_consented_face_embedding_flushes_only_after_consent_gate() ->
 
 
 def test_embedding_consent_migration_adds_db_trigger() -> None:
-    migration = (
-        "backend/alembic/versions/1f0f9a2c7b33_enforce_embedding_consent.py"
-    )
+    migration = "backend/alembic/versions/1f0f9a2c7b33_enforce_embedding_consent.py"
     with open(migration, encoding="utf-8") as file:
         source = file.read()
 

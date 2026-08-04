@@ -11,7 +11,9 @@ import pytest
 from cryptography.exceptions import InvalidTag
 
 _previous_biometric_kek = os.environ.get("BIOMETRIC_KEK")
-os.environ["BIOMETRIC_KEK"] = "kek.test:" + base64.urlsafe_b64encode(bytes([9]) * 32).decode().rstrip("=")
+os.environ["BIOMETRIC_KEK"] = "kek.test:" + base64.urlsafe_b64encode(
+    bytes([9]) * 32
+).decode().rstrip("=")
 
 from backend.app.crypto.envelope import (
     decrypt_embedding,

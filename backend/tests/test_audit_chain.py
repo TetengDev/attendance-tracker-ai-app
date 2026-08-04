@@ -68,7 +68,10 @@ def test_hash_payload_is_stable_for_json_key_ordering() -> None:
         occurred_at=right.occurred_at,
     )
 
-    assert make_audit_log(right, prev_hash=None).hash == make_audit_log(equivalent, prev_hash=None).hash
+    assert (
+        make_audit_log(right, prev_hash=None).hash
+        == make_audit_log(equivalent, prev_hash=None).hash
+    )
 
 
 def test_hash_chain_detects_hand_edited_row() -> None:

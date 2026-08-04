@@ -340,8 +340,58 @@ paths = [
 ]
 
 [[ownership]]
+issue = "TEN-95"
+paths = [
+  "infra/fetch_evalsets.sh",
+  "fixtures/faces/LICENSES.md",
+  "docs/eval-corpus.md",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
+issue = "TEN-94"
+paths = [
+  "backend/app/face/smoke.py",
+  "backend/app/face/engine.py",
+  "backend/tests/fixtures/goldens/**",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
+issue = "TEN-12"
+paths = [
+  "models/checksums.txt",
+  "models/README.md",
+  "infra/fetch_models.sh",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
+issue = "TEN-14"
+paths = [
+  "backend/app/face/detect.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
+issue = "TEN-15"
+paths = [
+  "backend/app/face/align.py",
+  "backend/app/face/embed.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
+issue = "TEN-16"
+paths = [
+  "backend/app/face/liveness.py",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "implement-face-protocol"
 paths = ["backend/app/face/**"]
+
 
 [[ownership]]
 issue = "implement-settings-schema"

@@ -201,8 +201,12 @@ class EnrollmentService:
         return EnrollmentCommit(
             response=EnrollmentCommitResponse(
                 person_id=person_id,
-                accepted_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED),
-                rejected_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.REJECTED),
+                accepted_count=sum(
+                    1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED
+                ),
+                rejected_count=sum(
+                    1 for result in results if result.status == EnrollmentValidationStatus.REJECTED
+                ),
                 active_embeddings_count=active_count,
                 enrollment_complete=enrollment_complete(active_count),
                 results=results,
@@ -330,7 +334,9 @@ class EnrollmentService:
     ) -> Person:
         person = (
             await session.execute(
-                scoped_people_query(admin_user, business_date=business_date).where(Person.id == person_id)
+                scoped_people_query(admin_user, business_date=business_date).where(
+                    Person.id == person_id
+                )
             )
         ).scalar_one_or_none()
         if person is None:
@@ -443,7 +449,11 @@ async def probe_enrollment_identity(
     except ValueError as exc:
         raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, str(exc))) from exc
     if not validation.passed or validation.detection is None:
-        rejection = validation.rejection.message if validation.rejection else "Probe image failed validation."
+        rejection = (
+            validation.rejection.message
+            if validation.rejection
+            else "Probe image failed validation."
+        )
         raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, rejection))
 
     liveness = face_engine.liveness(bgr, validation.detection.bbox)
@@ -470,11 +480,17 @@ async def _commit_uploads(
     audit_action: str,
 ) -> EnrollmentCommitResponse:
     try:
-        prepared_uploads = [await _candidate_from_upload(file, default_pose=default_pose) for file in files]
-        rejected_uploads = [
-            prepared.result for prepared in prepared_uploads if isinstance(prepared, RejectedUploadCandidate)
+        prepared_uploads = [
+            await _candidate_from_upload(file, default_pose=default_pose) for file in files
         ]
-        candidates = [prepared for prepared in prepared_uploads if isinstance(prepared, ImageCandidate)]
+        rejected_uploads = [
+            prepared.result
+            for prepared in prepared_uploads
+            if isinstance(prepared, RejectedUploadCandidate)
+        ]
+        candidates = [
+            prepared for prepared in prepared_uploads if isinstance(prepared, ImageCandidate)
+        ]
         commit = await service.prepare_commit(
             session,
             admin_user,

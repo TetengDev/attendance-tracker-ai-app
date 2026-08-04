@@ -56,7 +56,9 @@ class Location(Base):
         CheckConstraint("name <> ''", name="name_non_empty"),
         CheckConstraint("timezone <> ''", name="timezone_non_empty"),
         CheckConstraint("latitude IS NULL OR latitude BETWEEN -90 AND 90", name="latitude_range"),
-        CheckConstraint("longitude IS NULL OR longitude BETWEEN -180 AND 180", name="longitude_range"),
+        CheckConstraint(
+            "longitude IS NULL OR longitude BETWEEN -180 AND 180", name="longitude_range"
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -147,7 +149,9 @@ class Device(Base):
         self.require_valid_location_mode(self.mode, self.location_id)
 
     @validates("location_id", "mode")
-    def validate_location_mode(self, key: str, value: DeviceMode | UUID | None) -> DeviceMode | UUID | None:
+    def validate_location_mode(
+        self, key: str, value: DeviceMode | UUID | None
+    ) -> DeviceMode | UUID | None:
         if getattr(self, "_allow_incomplete_device_state", False):
             return value
         candidate_mode = value if key == "mode" else self.mode

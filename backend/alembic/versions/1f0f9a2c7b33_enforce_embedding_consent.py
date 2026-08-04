@@ -49,7 +49,9 @@ $$;
 
 
 def upgrade() -> None:
-    op.add_column("face_embeddings", sa.Column("policy_version", sa.String(length=64), nullable=True))
+    op.add_column(
+        "face_embeddings", sa.Column("policy_version", sa.String(length=64), nullable=True)
+    )
     op.execute(
         """
         UPDATE face_embeddings fe
@@ -77,7 +79,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS ck_face_embeddings_active_biometric_consent ON face_embeddings")
+    op.execute(
+        "DROP TRIGGER IF EXISTS ck_face_embeddings_active_biometric_consent ON face_embeddings"
+    )
     op.execute("DROP FUNCTION IF EXISTS enforce_face_embedding_biometric_consent()")
     op.drop_constraint(
         op.f("ck_face_embeddings_policy_version_non_empty"),
