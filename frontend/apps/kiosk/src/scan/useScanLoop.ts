@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
 import type { FrameBurst, FrameItem, GateMetrics } from "@attendance/protocol";
 import { checkFrameGates, computeIoU, type BBox, type GateSettings } from "./gate";
@@ -49,15 +49,21 @@ async function getFaceDetector(): Promise<FaceDetector> {
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    const vision = await FilesetResolver.forVisionTasks("/wasm");
-    cachedDetector = await FaceDetector.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "/face_detector.tflite",
-        delegate: "GPU",
-      },
-      runningMode: "IMAGE",
-    });
-    return cachedDetector;
+    try {
+      const vision = await FilesetResolver.forVisionTasks("/wasm");
+      cachedDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "/face_detector.tflite",
+          delegate: "GPU",
+        },
+        runningMode: "IMAGE",
+      });
+      return cachedDetector;
+    } catch (err) {
+      // Clear promise on failure to allow retry
+      loadingPromise = null;
+      throw err;
+    }
   })();
 
   return loadingPromise;
@@ -83,20 +89,35 @@ export function useScanLoop({
   const [metrics, setMetrics] = useState<GateMetrics | null>(null);
   const [reason, setReason] = useState<string | null>(null);
 
-  // Resolved gate settings (with fallbacks)
-  const resolvedSettings = {
-    min_bbox_area_pct: settings.min_bbox_area_pct ?? 8.0,
-    min_interocular_px: settings.min_interocular_px ?? 90,
-    max_center_offset_pct: settings.max_center_offset_pct ?? 20.0,
-    min_sharpness: settings.min_sharpness ?? 60.0,
-    luma_min: settings.luma_min ?? 40,
-    luma_max: settings.luma_max ?? 220,
-    stability_iou: settings.stability_iou ?? 0.90,
-    stability_frames: settings.stability_frames ?? 3,
-    stability_ms: settings.stability_ms ?? 120,
-    burst_count: settings.burst_count ?? 2,
-    burst_interval_ms: settings.burst_interval_ms ?? 150,
-  };
+  // Memoize resolved gate settings to prevent loop recreation on every render/frame
+  const resolvedSettings = useMemo(
+    () => ({
+      min_bbox_area_pct: settings.min_bbox_area_pct ?? 8.0,
+      min_interocular_px: settings.min_interocular_px ?? 90,
+      max_center_offset_pct: settings.max_center_offset_pct ?? 20.0,
+      min_sharpness: settings.min_sharpness ?? 60.0,
+      luma_min: settings.luma_min ?? 40,
+      luma_max: settings.luma_max ?? 220,
+      stability_iou: settings.stability_iou ?? 0.90,
+      stability_frames: settings.stability_frames ?? 3,
+      stability_ms: settings.stability_ms ?? 120,
+      burst_count: settings.burst_count ?? 2,
+      burst_interval_ms: settings.burst_interval_ms ?? 150,
+    }),
+    [
+      settings.min_bbox_area_pct,
+      settings.min_interocular_px,
+      settings.max_center_offset_pct,
+      settings.min_sharpness,
+      settings.luma_min,
+      settings.luma_max,
+      settings.stability_iou,
+      settings.stability_frames,
+      settings.stability_ms,
+      settings.burst_count,
+      settings.burst_interval_ms,
+    ]
+  );
 
   const activeStreamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<FaceDetector | null>(null);
@@ -150,6 +171,7 @@ export function useScanLoop({
 
   // Stop camera stream helper
   const stopCamera = useCallback(() => {
+    stabilityQueueRef.current = []; // Clear queue on stream stop
     if (activeStreamRef.current) {
       activeStreamRef.current.getTracks().forEach((track) => track.stop());
       activeStreamRef.current = null;
@@ -164,6 +186,7 @@ export function useScanLoop({
   const startCamera = useCallback(async () => {
     stopCamera();
     setCameraError(null);
+    stabilityQueueRef.current = []; // Clear queue on stream start
 
     const constraints: MediaStreamConstraints = {
       video: {
@@ -362,13 +385,15 @@ export function useScanLoop({
   // Main scan loop tick
   useEffect(() => {
     const loop = async () => {
+      // Early return if scanning is disabled/not running
+      if (!isScanRunning) return;
+
       const video = videoRef.current;
       const detector = detectorRef.current;
       const canvas320 = canvas320Ref.current;
       const canvas480 = canvas480Ref.current;
 
       if (
-        !isScanRunning ||
         !video ||
         !detector ||
         !canvas320 ||
@@ -460,10 +485,30 @@ export function useScanLoop({
         const now = performance.now();
         const queue = stabilityQueueRef.current;
 
+        // Verify if the current box is stable compared to the last tracked frame
+        if (queue.length > 0) {
+          const lastFrame = queue[queue.length - 1];
+          if (lastFrame) {
+            const iou = computeIoU(currentBox, lastFrame.bbox);
+            if (iou < resolvedSettings.stability_iou) {
+              // Face moved/drifted -> reset stability queue
+              queue.length = 0;
+            }
+          }
+        }
+
         // Push current passing frame to stability queue
         queue.push({ timestamp: now, bbox: currentBox });
-        if (queue.length > resolvedSettings.stability_frames) {
-          queue.shift();
+
+        // Trim frames from the front that are older than stability_ms,
+        // but keep at least stability_frames in the queue to maintain tracking history
+        while (queue.length > resolvedSettings.stability_frames) {
+          const nextFrame = queue[1];
+          if (nextFrame && now - nextFrame.timestamp >= resolvedSettings.stability_ms) {
+            queue.shift();
+          } else {
+            break;
+          }
         }
 
         // Verify stability gate requirements
@@ -471,7 +516,7 @@ export function useScanLoop({
         const q0 = queue[0];
         const qLast = queue[queue.length - 1];
 
-        if (queue.length === resolvedSettings.stability_frames && q0 && qLast) {
+        if (queue.length >= resolvedSettings.stability_frames && q0 && qLast) {
           const elapsed = qLast.timestamp - q0.timestamp;
           const timeOk = elapsed >= resolvedSettings.stability_ms;
 

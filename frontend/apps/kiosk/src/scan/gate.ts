@@ -44,17 +44,13 @@ export function computeIoU(boxA: BBox, boxB: BBox): number {
 
 /**
  * Computes the variance of the Laplacian of a canvas region (sharpness metric).
+ * Takes pre-extracted ImageData to avoid duplicate GPU-to-CPU copy overhead.
  */
-export function computeLaplacianVariance(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): number {
+export function computeLaplacianVariance(imgData: ImageData): number {
+  const w = imgData.width;
+  const h = imgData.height;
   if (w <= 2 || h <= 2) return 0;
 
-  const imgData = ctx.getImageData(x, y, w, h);
   const data = imgData.data;
 
   // Grayscale conversion
@@ -102,16 +98,13 @@ export function computeLaplacianVariance(
 
 /**
  * Computes the mean luma (brightness) of a canvas region.
+ * Takes pre-extracted ImageData to avoid duplicate GPU-to-CPU copy overhead.
  */
-export function computeMeanLuma(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): number {
+export function computeMeanLuma(imgData: ImageData): number {
+  const w = imgData.width;
+  const h = imgData.height;
   if (w <= 0 || h <= 0) return 0;
-  const imgData = ctx.getImageData(x, y, w, h);
+
   const data = imgData.data;
   let sum = 0;
   for (let i = 0; i < data.length; i += 4) {
@@ -219,8 +212,15 @@ export function checkFrameGates(
   const rw = Math.min(320 - rx, Math.floor(bbox.width));
   const rh = Math.min(240 - ry, Math.floor(bbox.height));
 
+  if (rw <= 0 || rh <= 0) {
+    return { passed: false, metrics, reason: "invalid_bbox_dimensions" };
+  }
+
+  // Single GPU-to-CPU canvas readback copy for both Laplacian & Luma
+  const imgData = ctx.getImageData(rx, ry, rw, rh);
+
   // 4. Sharpness (Variance of Laplacian)
-  const sharpness = computeLaplacianVariance(ctx, rx, ry, rw, rh);
+  const sharpness = computeLaplacianVariance(imgData);
   metrics.sharpness = parseFloat(sharpness.toFixed(2));
 
   if (sharpness < settings.min_sharpness) {
@@ -232,7 +232,7 @@ export function checkFrameGates(
   }
 
   // 5. Mean Luma (Brightness)
-  const luma = computeMeanLuma(ctx, rx, ry, rw, rh);
+  const luma = computeMeanLuma(imgData);
   metrics.luma = parseFloat(luma.toFixed(2));
 
   if (luma < settings.luma_min || luma > settings.luma_max) {
