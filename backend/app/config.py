@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     biometric_kek: SecretStr
+    jwt_secret: SecretStr = SecretStr("default_kiosk_jwt_secret_change_me_in_production")
     audit_chain_export_dir: str | None = None
     audit_chain_export_environment: str = "production"
     audit_chain_export_deployment_id: str | None = None

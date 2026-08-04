@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import secrets
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -34,7 +35,14 @@ from backend.app.api.schemas.kiosk import (
     ServerMessageType,
     SettingsPush,
 )
-from backend.app.auth.passwords import verify_admin_password
+from backend.app.auth.device import (
+    decode_device_jwt,
+    get_device_token_key,
+    global_revocation_registry,
+    hash_device_token,
+    is_ip_allowed,
+    verify_device_token,
+)
 from backend.app.config import get_settings
 from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
 from backend.app.db.session import get_session
@@ -181,7 +189,7 @@ async def kiosk_websocket_endpoint(
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
-                    error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
+                    error=ErrorBody(code=ErrorCode.VALIDATION_ERROR, message=str(exc)),
                 ).model_dump(mode="json")
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -190,11 +198,9 @@ async def kiosk_websocket_endpoint(
         # 2. Authenticate device token from JWT
         settings = get_settings()
         try:
-            claims = jwt.decode(
-                hello.device_token_jwt,
-                settings.biometric_kek.get_secret_value(),
-                algorithms=["HS256"],
-            )
+            # Decode the short-lived JWT (uses settings.jwt_secret)
+            jwt_secret_val = settings.jwt_secret.get_secret_value()
+            claims = decode_device_jwt(hello.device_token_jwt, jwt_secret_val)
             device_id = UUID(claims["sub"])
             raw_token = claims["token"]
         except (jwt.InvalidTokenError, KeyError, ValueError) as exc:
@@ -212,13 +218,47 @@ async def kiosk_websocket_endpoint(
 
         # Fetch and verify device
         device = await session.get(Device, device_id)
-        if device is None or not verify_admin_password(device.token_hash, raw_token):
+        
+        # Check revocation status
+        if device is not None and global_revocation_registry.is_revoked(device.id):
+            await websocket.send_json(
+                ErrorMessage(
+                    type=ServerMessageType.ERROR,
+                    error=ErrorBody(
+                        code=ErrorCode.DEVICE_REVOKED,
+                        message="Device revoked",
+                    ),
+                ).model_dump(mode="json")
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Verify device token using HMAC
+        key = get_device_token_key(settings.biometric_kek.get_secret_value())
+        if device is None or not verify_device_token(raw_token, device.token_hash, key):
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
                     error=ErrorBody(
                         code=ErrorCode.DEVICE_REVOKED,
                         message="Device revoked or invalid token credentials",
+                    ),
+                ).model_dump(mode="json")
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Check allowed CIDRs
+        client_ip = websocket.client.host if websocket.client is not None else "127.0.0.1"
+        if client_ip == "testclient":
+            client_ip = "127.0.0.1"
+        if not is_ip_allowed(client_ip, device.allowed_cidrs):
+            await websocket.send_json(
+                ErrorMessage(
+                    type=ServerMessageType.ERROR,
+                    error=ErrorBody(
+                        code=ErrorCode.DEVICE_REVOKED,
+                        message="Client IP address not allowed",
                     ),
                 ).model_dump(mode="json")
             )
@@ -276,6 +316,27 @@ async def kiosk_websocket_endpoint(
                 msg_type = payload.get("type")
                 if msg_type == ClientMessageType.HEARTBEAT:
                     heartbeat = Heartbeat.model_validate(payload)
+                    
+                    # Immediate revocation check on heartbeat
+                    if global_revocation_registry.is_revoked(device.id):
+                        await websocket.send_json(
+                            ErrorMessage(
+                                type=ServerMessageType.ERROR,
+                                error=ErrorBody(
+                                    code=ErrorCode.DEVICE_REVOKED,
+                                    message="Device has been revoked",
+                                ),
+                            ).model_dump(mode="json")
+                        )
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                        return
+
+                    # Rotate the long-lived device token
+                    new_token = secrets.token_urlsafe(32)
+                    key = get_device_token_key(settings.biometric_kek.get_secret_value())
+                    device.token_hash = hash_device_token(new_token, key)
+                    device.token_display_prefix = new_token[:6]
+
                     # Log heartbeat durably
                     db_heartbeat = DeviceHeartbeat(
                         device_id=device.id,
@@ -285,6 +346,12 @@ async def kiosk_websocket_endpoint(
                     )
                     session.add(db_heartbeat)
                     await session.commit()
+
+                    # Send token rotation message to client
+                    await websocket.send_json({
+                        "type": "token_rotation",
+                        "device_token": new_token,
+                    })
 
                     # Check for settings version update
                     new_resolved = await resolve_db_settings(session, context)
@@ -596,7 +663,7 @@ async def kiosk_websocket_endpoint(
                 await websocket.send_json(
                     ErrorMessage(
                         type=ServerMessageType.ERROR,
-                        error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
+                        error=ErrorBody(code=ErrorCode.VALIDATION_ERROR, message=str(exc)),
                     ).model_dump(mode="json")
                 )
             except Exception:

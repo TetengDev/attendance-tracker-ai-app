@@ -404,3 +404,13 @@ paths = ["backend/app/api/**"]
 [[ownership]]
 issue = "implement-error-taxonomy"
 paths = ["backend/app/errors.py"]
+
+[[ownership]]
+issue = "TEN-38"
+paths = [
+  "backend/app/auth/device.py",
+  "backend/app/api/device_pairing.py",
+  "backend/app/config.py",
+  "backend/tests/test_device_auth.py",
+  "docs/ownership.toml",
+]

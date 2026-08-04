@@ -22,6 +22,7 @@ class ErrorCode(str, Enum):
     SCAN_BACKEND_UNAVAILABLE = "SCAN_BACKEND_UNAVAILABLE"
     NO_CONSENT = "NO_CONSENT"
     DUPLICATE_ENROLLMENT = "DUPLICATE_ENROLLMENT"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
 
 
 ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
@@ -40,6 +41,7 @@ ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.SCAN_BACKEND_UNAVAILABLE: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.NO_CONSENT: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.DUPLICATE_ENROLLMENT: HTTPStatus.CONFLICT,
+    ErrorCode.VALIDATION_ERROR: HTTPStatus.UNPROCESSABLE_ENTITY,
 }
 
 
@@ -59,6 +61,7 @@ ERROR_KIOSK_COPY: dict[ErrorCode, str] = {
     ErrorCode.SCAN_BACKEND_UNAVAILABLE: "Temporarily unavailable — try again",
     ErrorCode.NO_CONSENT: "No active consent",
     ErrorCode.DUPLICATE_ENROLLMENT: "Duplicate enrollment",
+    ErrorCode.VALIDATION_ERROR: "Validation error",
 }
 
 

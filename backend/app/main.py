@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.app.api.consents import router as consents_router
+from backend.app.api.device_pairing import router as device_pairing_router
 from backend.app.api.devices import router as devices_router
 from backend.app.api.enrollment import router as enrollment_router
 from backend.app.api.groups import router as groups_router
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(groups_router)
     app.include_router(locations_router)
     app.include_router(devices_router)
+    app.include_router(device_pairing_router)
     return app
 
 
