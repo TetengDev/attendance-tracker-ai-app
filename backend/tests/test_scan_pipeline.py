@@ -404,6 +404,131 @@ class TestScanPipelineCooldown:
             )
         assert exc_info.value.code == ErrorCode.COOLDOWN_ACTIVE
 
+    def test_cooldown_scope_location(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+        cd = InMemoryCooldownChecker()
+        loc_b = UUID("00000000-0000-0000-0000-000000000002")
+
+        settings = default_settings()
+        settings["scan.cooldown_scope"] = "location"
+
+        # First scan at loc_a succeeds
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        run_scan_pipeline(
+            _make_scan_input(location_id=LOCATION_ID),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+
+        # Second scan at same loc_a should fail cooldown
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(location_id=LOCATION_ID),
+                engine=engine,
+                gallery=gallery,
+                cooldown=cd,
+                settings=settings,
+            )
+        assert exc_info.value.code == ErrorCode.COOLDOWN_ACTIVE
+
+        # Scan at different loc_b should succeed
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        settings_b = default_settings()
+        settings_b["scan.cooldown_scope"] = "location"
+        settings_b["scan.min_inter_location_seconds"] = 0  # disable impossible travel
+        result = run_scan_pipeline(
+            _make_scan_input(
+                location_id=loc_b,
+                device_id=UUID("00000000-0000-0000-0000-000000000003"),
+            ),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings_b,
+        )
+        assert result.outcome == "accepted"
+
+    def test_cooldown_scope_device(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+        cd = InMemoryCooldownChecker()
+        dev_b = UUID("00000000-0000-0000-0000-000000000002")
+
+        settings = default_settings()
+        settings["scan.cooldown_scope"] = "device"
+
+        # First scan on dev_a succeeds
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        run_scan_pipeline(
+            _make_scan_input(device_id=DEVICE_ID),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+
+        # Second scan on same dev_a should fail cooldown
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(device_id=DEVICE_ID),
+                engine=engine,
+                gallery=gallery,
+                cooldown=cd,
+                settings=settings,
+            )
+        assert exc_info.value.code == ErrorCode.COOLDOWN_ACTIVE
+
+        # Scan on different dev_b should succeed
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        result = run_scan_pipeline(
+            _make_scan_input(device_id=dev_b),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+        assert result.outcome == "accepted"
+
+    def test_cooldown_scope_global(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+        cd = InMemoryCooldownChecker()
+        loc_b = UUID("00000000-0000-0000-0000-000000000002")
+        dev_b = UUID("00000000-0000-0000-0000-000000000002")
+
+        settings = default_settings()
+        settings["scan.cooldown_scope"] = "global"
+
+        # First scan succeeds
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        run_scan_pipeline(
+            _make_scan_input(location_id=LOCATION_ID, device_id=DEVICE_ID),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+
+        # Scan on diff location + diff device should still fail under global scope
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        settings_b = default_settings()
+        settings_b["scan.cooldown_scope"] = "global"
+        settings_b["scan.min_inter_location_seconds"] = 0
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(location_id=loc_b, device_id=dev_b),
+                engine=engine,
+                gallery=gallery,
+                cooldown=cd,
+                settings=settings_b,
+            )
+        assert exc_info.value.code == ErrorCode.COOLDOWN_ACTIVE
+
 
 class TestScanPipelineBackdating:
     def test_backdated_scan(self) -> None:

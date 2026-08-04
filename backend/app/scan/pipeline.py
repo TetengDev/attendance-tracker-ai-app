@@ -32,6 +32,7 @@ import numpy as np
 from backend.app.errors import DomainError, ErrorCode
 from backend.app.face.gallery import GalleryIndex, MatchDecision, MatchResult
 from backend.app.face.protocol import Detection, Embedding, FaceEngine, LivenessResult
+from backend.app.settings import get_float_setting, get_int_setting
 from backend.app.settings.registry import default_settings
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ class CooldownChecker:
         *,
         cooldown_seconds: int,
         cooldown_scope: str,
+        device_id: UUID | None = None,
     ) -> datetime | None:
         """Return the last-seen timestamp if cooldown is active, else None."""
         return None
@@ -123,6 +125,7 @@ class CooldownChecker:
         occurred_at: datetime,
         cooldown_seconds: int,
         cooldown_scope: str,
+        device_id: UUID | None = None,
     ) -> None:
         """Record the scan for cooldown tracking."""
 
@@ -228,7 +231,7 @@ def run_scan_pipeline(
     pl = person_lookup or PersonLookup()
 
     # ── 0. Rate limit (device-level) ─────────────────────────────────────
-    rate_per_second = _int(values, "scan.rate_per_second")
+    rate_per_second = get_int_setting(values, "scan.rate_per_second")
     if cd.check_rate_limit(scan_input.device_id, rate_per_second=rate_per_second):
         raise DomainError(ErrorCode.RATE_LIMITED)
 
@@ -250,7 +253,7 @@ def run_scan_pipeline(
     det = detections[0]
 
     # Validate face quality
-    det_score_min = _float(values, "face.det_score_min")
+    det_score_min = get_float_setting(values, "face.det_score_min")
     if det.det_score < det_score_min:
         raise DomainError(
             ErrorCode.FACE_TOO_SMALL,
@@ -288,7 +291,9 @@ def run_scan_pipeline(
     occurred_at, was_backdated = _compute_occurred_at(
         now,
         scan_input.monotonic_offset_ms,
-        max_offline_backdate_minutes=_int(values, "scan.max_offline_backdate_minutes"),
+        max_offline_backdate_minutes=get_int_setting(
+            values, "scan.max_offline_backdate_minutes"
+        ),
     )
 
     person_id: UUID | None = None
@@ -307,7 +312,7 @@ def run_scan_pipeline(
         person_id = match_result.top1.person_id
 
         # Cooldown check
-        cooldown_seconds = _int(values, "scan.cooldown_seconds")
+        cooldown_seconds = get_int_setting(values, "scan.cooldown_seconds")
         cooldown_scope = str(values.get("scan.cooldown_scope", "location"))
         last_seen = cd.check_cooldown(
             person_id,
@@ -315,6 +320,7 @@ def run_scan_pipeline(
             scan_input.location_source,
             cooldown_seconds=cooldown_seconds,
             cooldown_scope=cooldown_scope,
+            device_id=scan_input.device_id,
         )
         if last_seen is not None:
             raise DomainError(
@@ -323,7 +329,7 @@ def run_scan_pipeline(
             )
 
         # Impossible-travel check (only for device_fixed sources)
-        min_inter = _int(values, "scan.min_inter_location_seconds")
+        min_inter = get_int_setting(values, "scan.min_inter_location_seconds")
         if cd.check_impossible_travel(
             person_id,
             scan_input.location_id,
@@ -342,6 +348,7 @@ def run_scan_pipeline(
             occurred_at=occurred_at,
             cooldown_seconds=cooldown_seconds,
             cooldown_scope=cooldown_scope,
+            device_id=scan_input.device_id,
         )
 
         person_display_name = pl.get_display_name(person_id)
@@ -362,8 +369,8 @@ def run_scan_pipeline(
 
     else:
         # UNKNOWN — check unknown-face rate limit
-        unknown_rate = _int(values, "scan.unknown_rate_per_minute")
-        unknown_lockout = _int(values, "scan.unknown_lockout_seconds")
+        unknown_rate = get_int_setting(values, "scan.unknown_rate_per_minute")
+        unknown_lockout = get_int_setting(values, "scan.unknown_lockout_seconds")
         if cd.check_unknown_rate(
             scan_input.device_id,
             unknown_rate_per_minute=unknown_rate,
@@ -414,16 +421,3 @@ def run_scan_pipeline(
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _int(settings: dict[str, object], key: str) -> int:
-    value = settings[key]
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{key} must be int")
-    return value
-
-
-def _float(settings: dict[str, object], key: str) -> float:
-    value = settings[key]
-    if not isinstance(value, int | float):
-        raise TypeError(f"{key} must be numeric")
-    return float(value)

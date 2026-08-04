@@ -32,9 +32,19 @@ class InMemoryCooldownChecker(CooldownChecker):
         # unknown rate: device_id -> list of monotonic timestamps
         self._unknown_log: dict[UUID, list[float]] = {}
 
-    def _cooldown_key(self, person_id: UUID, location_id: UUID, cooldown_scope: str) -> str:
+    def _cooldown_key(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        cooldown_scope: str,
+        device_id: UUID | None = None,
+    ) -> str:
         if cooldown_scope == "location":
             return f"scan:cooldown:location:{person_id}:{location_id}"
+        if cooldown_scope == "device":
+            if device_id is None:
+                raise ValueError("device_id is required for device-scoped cooldown")
+            return f"scan:cooldown:device:{person_id}:{device_id}"
         return f"scan:cooldown:{cooldown_scope}:{person_id}"
 
     def check_cooldown(
@@ -45,8 +55,9 @@ class InMemoryCooldownChecker(CooldownChecker):
         *,
         cooldown_seconds: int,
         cooldown_scope: str,
+        device_id: UUID | None = None,
     ) -> datetime | None:
-        key = self._cooldown_key(person_id, location_id, cooldown_scope)
+        key = self._cooldown_key(person_id, location_id, cooldown_scope, device_id)
         last = self._cooldowns.get(key)
         if last is None:
             return None
@@ -65,10 +76,14 @@ class InMemoryCooldownChecker(CooldownChecker):
         occurred_at: datetime,
         cooldown_seconds: int,
         cooldown_scope: str,
+        device_id: UUID | None = None,
     ) -> None:
-        # Set both scoped and global keys
-        for scope in ("location", "global"):
-            key = self._cooldown_key(person_id, location_id, scope)
+        # Set all possible scopes (global, location, device)
+        scopes = ["location", "global"]
+        if device_id is not None:
+            scopes.append("device")
+        for scope in scopes:
+            key = self._cooldown_key(person_id, location_id, scope, device_id)
             self._cooldowns[key] = occurred_at
 
         # Update last-scan for impossible-travel

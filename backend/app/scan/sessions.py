@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.attendance import AttendanceLocationSource
 from backend.app.models.devices import Device, DeviceMode
 from backend.app.models.sessions import ScanSession, ScanSessionEndReason, ScanSessionLocationSource
+from backend.app.settings import get_bool_setting, get_int_setting
 from backend.app.settings.registry import default_settings
 
 
@@ -45,10 +46,10 @@ def open_scan_session(
             raise ScanSessionError("fixed device sessions must use the device location")
         location_source = ScanSessionLocationSource.DEVICE_FIXED
     else:
-        if _bool_setting(values, "session.require_operator") and operator_admin_id is None:
+        if get_bool_setting(values, "session.require_operator") and operator_admin_id is None:
             raise ScanSessionError("roaming sessions require an operator")
         if (
-            _bool_setting(values, "session.require_geofence")
+            get_bool_setting(values, "session.require_geofence")
             and location_source is not ScanSessionLocationSource.GEOFENCE
         ):
             raise ScanSessionError("roaming sessions require geofence confirmation")
@@ -89,8 +90,8 @@ def close_if_expired(
         return scan_session
 
     values = _settings_with_defaults(settings)
-    idle_timeout = timedelta(minutes=_int_setting(values, "session.idle_timeout_minutes"))
-    max_duration = timedelta(minutes=_int_setting(values, "session.max_duration_minutes"))
+    idle_timeout = timedelta(minutes=get_int_setting(values, "session.idle_timeout_minutes"))
+    max_duration = timedelta(minutes=get_int_setting(values, "session.max_duration_minutes"))
     if now - scan_session.last_activity_at >= idle_timeout:
         return close_scan_session(
             scan_session,
@@ -160,22 +161,9 @@ async def active_scan_session_for_device(
     return (await session.execute(query)).scalar_one_or_none()
 
 
-def _bool_setting(settings: dict[str, object], key: str) -> bool:
-    value = settings[key]
-    if not isinstance(value, bool):
-        raise TypeError(f"{key} must be bool")
-    return value
-
-
-def _int_setting(settings: dict[str, object], key: str) -> int:
-    value = settings[key]
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{key} must be int")
-    return value
-
-
 def _settings_with_defaults(overrides: dict[str, object] | None) -> dict[str, object]:
     values = default_settings()
     if overrides is not None:
         values.update(overrides)
     return values
+
