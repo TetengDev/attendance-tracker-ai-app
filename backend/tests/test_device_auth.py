@@ -344,3 +344,74 @@ class TestWebSocketSecurity:
                 assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
             finally:
                 global_revocation_registry.reset()
+
+    def test_reconnect_after_heartbeat_rotation_fails_with_old_jwt(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
+        secret_key = get_test_secret_key()
+        jwt_token = issue_device_jwt(DEVICE_ID, RAW_TOKEN, secret_key)
+
+        # 1. Connect and perform a heartbeat to trigger token rotation
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": jwt_token,
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "heartbeat",
+                    "fps": 30.0,
+                    "queue_depth": 0,
+                    "error_count": 0,
+                    "clock_skew_ms": 12,
+                }
+            )
+            rotation = ws.receive_json()
+            assert rotation["type"] == "token_rotation"
+            rotated_token = rotation["device_token"]
+            assert rotated_token != RAW_TOKEN
+
+        # Now, the DB has the hash of rotated_token.
+        # 2. Try to reconnect using the SAME jwt_token (which contains RAW_TOKEN).
+        # This will fail the HMAC check in the hello handshake!
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": jwt_token,
+                    "app_version": "1.0.0",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+
+
+def test_is_ip_allowed() -> None:
+    from backend.app.auth.device import is_ip_allowed
+
+    # Empty CIDR list allows any IP
+    assert is_ip_allowed("127.0.0.1", []) is True
+    assert is_ip_allowed("192.168.1.50", []) is True
+
+    # Valid matching CIDR
+    assert is_ip_allowed("127.0.0.1", ["127.0.0.1/32"]) is True
+    assert is_ip_allowed("192.168.1.50", ["192.168.1.0/24"]) is True
+
+    # Valid non-matching CIDR
+    assert is_ip_allowed("192.168.2.50", ["192.168.1.0/24"]) is False
+
+    # Invalid client IP string
+    assert is_ip_allowed("invalid-ip", ["127.0.0.1/32"]) is False
+
+    # Invalid CIDR string in list (should ignore and proceed/return False if none match)
+    assert is_ip_allowed("127.0.0.1", ["invalid-cidr", "127.0.0.1/32"]) is True
+    assert is_ip_allowed("127.0.0.1", ["invalid-cidr"]) is False
+
+

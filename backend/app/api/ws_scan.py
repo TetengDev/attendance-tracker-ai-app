@@ -189,7 +189,7 @@ async def kiosk_websocket_endpoint(
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
-                    error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
+                    error=ErrorBody(code=ErrorCode.VALIDATION_ERROR, message=str(exc)),
                 ).model_dump(mode="json")
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -663,7 +663,7 @@ async def kiosk_websocket_endpoint(
                 await websocket.send_json(
                     ErrorMessage(
                         type=ServerMessageType.ERROR,
-                        error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
+                        error=ErrorBody(code=ErrorCode.VALIDATION_ERROR, message=str(exc)),
                     ).model_dump(mode="json")
                 )
             except Exception:
