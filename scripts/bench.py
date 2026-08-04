@@ -123,14 +123,14 @@ def main() -> int:
     print(f"Test Image Dimensions: {w}x{h} ({c} channels)")
 
     # 1. Warm-up
-    print(f"\nRunning {args.warmup} warm-up iterations to initialize ORM execution plans...")
+    print(f"\nRunning {args.warmup} warm-up iterations to initialize ORT execution plans...")
     for _ in range(args.warmup):
         # Full flow
-        dets = engine.detector.detect(img, det_thresh=engine.det_score_min)
+        dets = engine.detect(img)
         if dets:
             aligned = engine.align(img, dets[0].landmarks)
             _ = engine.embed(aligned)
-            _ = engine.liveness_detector.check_liveness(img, dets[0].bbox)
+            _ = engine.liveness(img, dets[0].bbox)
 
     print("Warm-up complete.")
 
@@ -148,7 +148,7 @@ def main() -> int:
 
         # Step 1: Detect
         t0 = time.perf_counter()
-        dets = engine.detector.detect(img, det_thresh=engine.det_score_min)
+        dets = engine.detect(img)
         t_detect = time.perf_counter() - t0
         detect_times.append(t_detect)
 
@@ -172,7 +172,7 @@ def main() -> int:
 
         # Step 4: Liveness
         t0 = time.perf_counter()
-        _ = engine.liveness_detector.check_liveness(img, det.bbox)
+        _ = engine.liveness(img, det.bbox)
         t_liveness = time.perf_counter() - t0
         liveness_times.append(t_liveness)
 

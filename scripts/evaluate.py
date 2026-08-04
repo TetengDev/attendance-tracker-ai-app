@@ -88,7 +88,7 @@ def main() -> int:
             continue
 
         # Detect
-        dets = engine.detector.detect(img, det_thresh=engine.det_score_min)
+        dets = engine.detect(img)
         if not dets:
             # Skip if no face detected
             continue
@@ -101,7 +101,7 @@ def main() -> int:
         
         # Generate genuine pair by applying a realistic minor 2-pixel shift
         shifted_img = np.roll(img, shift=2, axis=0)
-        dets_shift = engine.detector.detect(shifted_img, det_thresh=engine.det_score_min)
+        dets_shift = engine.detect(shifted_img)
         if not dets_shift:
             continue
             
@@ -186,11 +186,12 @@ def main() -> int:
     print("\nVerification Gate:")
     if best_t >= 0.45:
         print(f"  [PASS] Recommended threshold {best_t:.2f} is >= 0.45 (conforming to PLAN.md §0 #9).")
+        print("=" * 90)
+        return 0
     else:
-        print(f"  [WARN] Recommended threshold {best_t:.2f} is below 0.45. Consider increasing sample size.")
-    print("=" * 90)
-
-    return 0
+        print(f"  [FAIL] Recommended threshold {best_t:.2f} is below 0.45. Consider increasing sample size.")
+        print("=" * 90)
+        return 1
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ def main() -> int:
 
     print("Running face detection...")
     # Run detector
-    dets = engine.detector.detect(img, det_thresh=engine.det_score_min)
+    dets = engine.detect(img)
     if not dets:
         print("Result: No face detected in the image.")
         return 1
@@ -78,7 +78,7 @@ def main() -> int:
         print(f"  Detection Score: {det.det_score:.4f}")
 
         # Run liveness
-        liveness_res = engine.liveness_detector.check_liveness(img, det.bbox)
+        liveness_res = engine.liveness(img, det.bbox)
         passed_str = "PASSED (REAL)" if liveness_res.passed else "FAILED (SPOOF)"
 
         print(f"  Liveness Score: {liveness_res.live_score:.4f}")
