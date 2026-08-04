@@ -424,3 +424,11 @@ paths = [
   ".github/workflows/ci.yml",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "TEN-42"
+paths = [
+  "frontend/apps/kiosk/src/scan/useScanLoop.ts",
+  "frontend/apps/kiosk/src/scan/gate.ts",
+  "docs/ownership.toml",
+]
