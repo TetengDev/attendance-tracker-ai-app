@@ -15,7 +15,8 @@ def test_root_app_import_path_matches_uvicorn_command() -> None:
     assert app.title == "Attendance Tracker"
 
 
-def test_settings_requires_biometric_kek() -> None:
+def test_settings_requires_biometric_kek(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.delenv("BIOMETRIC_KEK", raising=False)
     try:
         Settings(  # type: ignore[call-arg]
             database_url="postgresql+asyncpg://localhost/db",
