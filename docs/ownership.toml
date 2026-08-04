@@ -432,3 +432,12 @@ paths = [
   "frontend/apps/kiosk/src/scan/gate.ts",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "TEN-35"
+paths = [
+  "backend/app/enrollment/duplicates.py",
+  "backend/tests/test_duplicates.py",
+  "docs/ownership.toml",
+]
+

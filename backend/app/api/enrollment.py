@@ -485,6 +485,21 @@ async def _commit_uploads(
             gallery_index=gallery_index,
             now=datetime.now(UTC),
         )
+        if commit.gallery_entries:
+            from backend.app.enrollment.duplicates import check_duplicate_enrollment
+            vectors = [entry.vector for entry in commit.gallery_entries]
+            conflicts = await check_duplicate_enrollment(
+                session,
+                vectors,
+                person_id,
+                gallery_index,
+            )
+            if conflicts:
+                first = conflicts[0]
+                raise CrudError(
+                    CrudErrorCode.CONFLICT,
+                    f"Face already enrolled under person {first['person_id']} ({first['display_name']})",
+                )
         response = _merge_rejected_uploads(commit.response, rejected_uploads)
         actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
