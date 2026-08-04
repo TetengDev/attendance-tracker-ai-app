@@ -144,3 +144,6 @@ class InMemoryCooldownChecker(CooldownChecker):
         self._last_scan.clear()
         self._rate_log.clear()
         self._unknown_log.clear()
+
+
+global_cooldown_checker = InMemoryCooldownChecker()
