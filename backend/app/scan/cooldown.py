@@ -161,4 +161,96 @@ class InMemoryCooldownChecker(CooldownChecker):
         self._unknown_log.clear()
 
 
-global_cooldown_checker = InMemoryCooldownChecker()
+class CooldownCheckerProxy(CooldownChecker):
+    """Proxy that delegates to RedisCooldownChecker in production, or InMemory in tests."""
+
+    def __init__(self) -> None:
+        self._delegate: CooldownChecker | None = None
+
+    @property
+    def delegate(self) -> CooldownChecker:
+        if self._delegate is None:
+            import sys
+            if "pytest" in sys.modules:
+                self._delegate = InMemoryCooldownChecker()
+            else:
+                from backend.app.scan.limits import RedisCooldownChecker
+                self._delegate = RedisCooldownChecker()
+        return self._delegate
+
+    def check_cooldown(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        cooldown_seconds: int,
+        cooldown_scope: str,
+        device_id: UUID | None = None,
+    ) -> datetime | None:
+        return self.delegate.check_cooldown(
+            person_id,
+            location_id,
+            location_source,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_scope=cooldown_scope,
+            device_id=device_id,
+        )
+
+    def set_cooldown(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        occurred_at: datetime,
+        cooldown_seconds: int,
+        cooldown_scope: str,
+        device_id: UUID | None = None,
+    ) -> None:
+        self.delegate.set_cooldown(
+            person_id,
+            location_id,
+            location_source,
+            occurred_at=occurred_at,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_scope=cooldown_scope,
+            device_id=device_id,
+        )
+
+    def check_impossible_travel(
+        self,
+        person_id: UUID,
+        location_id: UUID,
+        location_source: str,
+        *,
+        min_inter_location_seconds: int,
+    ) -> bool:
+        return self.delegate.check_impossible_travel(
+            person_id,
+            location_id,
+            location_source,
+            min_inter_location_seconds=min_inter_location_seconds,
+        )
+
+    def check_rate_limit(self, device_id: UUID, *, rate_per_second: int) -> bool:
+        return self.delegate.check_rate_limit(device_id, rate_per_second=rate_per_second)
+
+    def check_unknown_rate(
+        self,
+        device_id: UUID,
+        *,
+        unknown_rate_per_minute: int,
+        unknown_lockout_seconds: int,
+    ) -> bool:
+        return self.delegate.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=unknown_rate_per_minute,
+            unknown_lockout_seconds=unknown_lockout_seconds,
+        )
+
+    def reset(self) -> None:
+        self.delegate.reset()
+
+
+global_cooldown_checker = CooldownCheckerProxy()

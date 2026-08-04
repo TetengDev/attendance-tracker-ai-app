@@ -414,3 +414,12 @@ paths = [
   "backend/tests/test_device_auth.py",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "TEN-39"
+paths = [
+  "backend/app/scan/limits.py",
+  "backend/app/scan/cooldown.py",
+  "backend/tests/test_limits.py",
+  "docs/ownership.toml",
+]
