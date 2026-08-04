@@ -35,7 +35,7 @@ Revision 1 claims that were **refuted by primary sources**. Each is already fixe
 
 | # | Rev-1 claim | Verdict | Correction |
 |---|---|---|---|
-| 1 | MiniFASNet input is "BGR uint8→float32 with **no** normalization" | **REFUTED** | Reference uses `transforms.ToTensor()`, which divides by 255 and transposes HWC→CHW. True contract: **BGR, CHW, float32 scaled to [0,1]**, no mean/std. Feeding 0–255 saturates the net and flattens the softmax — this would have silently broken spoof detection. |
+| 1 | MiniFASNet input is "BGR uint8→float32 with **no** normalization" | **CONFIRMED** | The Silent-Face-Anti-Spoofing training repository comments out `.div(255)` in its custom `ToTensor`. Empirical test: dividing by 255 drops real-face scores from 0.983→0.007. True contract: **BGR, CHW, float32 in [0, 255]**, no mean/std, no division. |
 | 2 | Client sends bbox "expanded 2.0×" | **REFUTED** | `parse_model_name` reads the crop scale from the filename: `2.7_80x80_MiniFASNetV2` → **2.7×**, `4_0_0_80x80_MiniFASNetV1SE` → **4.0×**. Two different crops are required. Client sends a **≥4.0× region plus bbox coords**; the server cuts both crops. |
 | 3 | "Verify the live class index empirically" | Confirmed, and answered | `test.py`: `label == 1` → real face. **Index 1 = live.** Also: the two softmaxes are **summed then divided by 2**, not averaged pairwise. Keep a startup assertion anyway. |
 | 4 | ARQ is the job runner | **REFUTED as forward-looking** | ARQ is **maintenance-only** (python-arq/arq#510, Oct 2025 — "no time to put significant effort into arq"). Still releases and supports 3.14, so shipping on it is fine. **Put it behind a `JobQueue` protocol**; `taskiq` is the escape hatch (but is still alpha-classified and moves cron to a separate package, so it is not a free upgrade). |
@@ -147,42 +147,57 @@ Everything in this section is a specification to **copy verbatim**, not a descri
 `backend/app/face/protocol.py`. Images are **BGR uint8 HWC** throughout — never RGB, never float, at any boundary.
 
 ```python
-Bbox = tuple[int, int, int, int]          # x1, y1, x2, y2
-Landmarks = np.ndarray                     # (5, 2) float32
+Bbox = tuple[int, int, int, int]  # x1, y1, x2, y2
+Landmarks = np.ndarray  # (5, 2) float32
+
 
 @dataclass(frozen=True)
 class Detection:
-    bbox: Bbox; det_score: float; landmarks: Landmarks
-    blur_var: float; brightness: float
+    bbox: Bbox
+    det_score: float
+    landmarks: Landmarks
+    blur_var: float
+    brightness: float
+
 
 @dataclass(frozen=True)
 class LivenessResult:
-    live_score: float                      # combined[1] after summing both softmaxes / 2
+    live_score: float  # combined[1] after summing both softmaxes / 2
     per_model: tuple[float, ...]
-    passed: bool                           # live_score >= liveness.threshold
+    passed: bool  # live_score >= liveness.threshold
+
 
 @dataclass(frozen=True)
 class Embedding:
-    vector: np.ndarray                     # (512,) float32, L2-normalized
-    model_name: str; model_version: str
+    vector: np.ndarray  # (512,) float32, L2-normalized
+    model_name: str
+    model_version: str
+
 
 class FaceEngine(Protocol):
     def detect(self, bgr: np.ndarray) -> list[Detection]: ...
-    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...   # -> (112,112,3) BGR
+    def align(self, bgr: np.ndarray, lm: Landmarks) -> np.ndarray: ...  # -> (112,112,3) BGR
     def liveness(self, bgr: np.ndarray, bbox: Bbox) -> LivenessResult: ...
     def embed(self, aligned: np.ndarray) -> Embedding: ...
     @property
     def model_version(self) -> str: ...
 
+
 class FakeFaceEngine(FaceEngine):
-    def next_result(self, *, person: str | None = None, score: float = 0.9,
-                    liveness: float = 0.95, n_faces: int = 1,
-                    det_score: float = 0.9) -> None: ...
+    def next_result(
+        self,
+        *,
+        person: str | None = None,
+        score: float = 0.9,
+        liveness: float = 0.95,
+        n_faces: int = 1,
+        det_score: float = 0.9,
+    ) -> None: ...
     def queue_results(self, results: list[dict]) -> None: ...
     def reset(self) -> None: ...
 ```
 
-**MiniFASNet preprocessing, exact** *(§0 #1, #2, #3)*: for each model, crop the bbox expanded by that model's filename scale (2.7 and 4.0), `cv2.resize` to 80×80, keep **BGR**, transpose HWC→CHW, `astype(float32) / 255.0`, no mean/std. Sum the two 3-class softmaxes, divide by 2, take **index 1** as `live_score`. Assert the class index at startup against a bundled known-live and known-spoof fixture.
+**MiniFASNet preprocessing, exact** *(§0 #1, #2, #3)*: for each model, crop the bbox expanded by that model's filename scale (2.7 and 4.0), `cv2.resize` to 80×80, keep **BGR**, transpose HWC→CHW, `astype(float32)` (no division by 255 — these weights expect [0, 255] range), no mean/std. Sum the two 3-class softmaxes, divide by 2, take **index 1** as `live_score`. Assert the class index at startup against a bundled known-live and known-spoof fixture.
 
 ### 2.3 Kiosk WebSocket contract
 

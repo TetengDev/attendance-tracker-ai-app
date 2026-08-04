@@ -87,6 +87,11 @@ class MiniFASNetLiveness:
         # 1. Process V2 Model (Scale 2.7 with padding)
         crop_27 = crop_with_padding(bgr, bbox, 2.7)
         resized_27 = cv2.resize(crop_27, (80, 80))
+        # NOTE: No division by 255.0 here. The Silent-Face-Anti-Spoofing training
+        # repository uses a custom ToTensor that comments out .div(255). These
+        # specific model weights expect float32 in [0, 255]. Dividing by 255
+        # drops real-face scores from 0.983 → 0.007, causing false positives.
+        # See: https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
         blob_27 = resized_27.astype(np.float32)
         blob_27 = np.transpose(blob_27, (2, 0, 1))
         blob_27 = np.expand_dims(blob_27, axis=0)
