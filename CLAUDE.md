@@ -52,7 +52,7 @@ Single organization, single tenant — many devices across many locations. The c
 
 ### MiniFASNet preprocessing — get this exactly right
 
-The reference implementation uses `transforms.ToTensor()`. The correct contract is **BGR, HWC→CHW, float32 divided by 255.0, no mean/std**. Feeding raw 0–255 saturates the network and flattens the softmax, silently breaking spoof detection. Two crops are required — **2.7× and 4.0×**, read from the model filenames — so the client sends a ≥4.0× region plus bbox coords. Sum both 3-class softmaxes, divide by 2, take **index 1** as the live score, and assert that index at startup.
+The reference implementation uses `transforms.ToTensor()`, but the Silent-Face-Anti-Spoofing training code comments out `.div(255)` in its custom `ToTensor`. The correct contract for these specific weights is **BGR, HWC→CHW, float32 in [0, 255], no mean/std, no division by 255**. Dividing by 255.0 drops real-face liveness scores from 0.983 to 0.007, causing universal false positives. Two crops are required — **2.7× and 4.0×**, read from the model filenames — so the client sends a ≥4.0× region plus bbox coords. Sum both 3-class softmaxes, divide by 2, take **index 1** as the live score, and assert that index at startup.
 
 ## Development Commands
 
