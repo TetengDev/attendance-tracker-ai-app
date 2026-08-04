@@ -122,6 +122,7 @@ class CooldownChecker:
         *,
         occurred_at: datetime,
         cooldown_seconds: int,
+        cooldown_scope: str,
     ) -> None:
         """Record the scan for cooldown tracking."""
 
@@ -340,6 +341,7 @@ def run_scan_pipeline(
             scan_input.location_source,
             occurred_at=occurred_at,
             cooldown_seconds=cooldown_seconds,
+            cooldown_scope=cooldown_scope,
         )
 
         person_display_name = pl.get_display_name(person_id)

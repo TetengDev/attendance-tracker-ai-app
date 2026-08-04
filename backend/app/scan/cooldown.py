@@ -34,8 +34,8 @@ class InMemoryCooldownChecker(CooldownChecker):
 
     def _cooldown_key(self, person_id: UUID, location_id: UUID, cooldown_scope: str) -> str:
         if cooldown_scope == "location":
-            return f"scan:cooldown:{person_id}:{location_id}"
-        return f"scan:cooldown:{person_id}"
+            return f"scan:cooldown:location:{person_id}:{location_id}"
+        return f"scan:cooldown:{cooldown_scope}:{person_id}"
 
     def check_cooldown(
         self,
@@ -64,6 +64,7 @@ class InMemoryCooldownChecker(CooldownChecker):
         *,
         occurred_at: datetime,
         cooldown_seconds: int,
+        cooldown_scope: str,
     ) -> None:
         # Set both scoped and global keys
         for scope in ("location", "global"):

@@ -25,7 +25,7 @@ import pytest
 
 from backend.app.errors import DomainError, ErrorCode
 from backend.app.face.gallery import GalleryEntry, GalleryIndex, GalleryVersionState
-from backend.app.face.protocol import FakeFaceEngine
+from backend.app.face.protocol import Embedding, FakeFaceEngine
 from backend.app.scan.cooldown import InMemoryCooldownChecker
 from backend.app.scan.pipeline import (
     PersonLookup,
@@ -239,6 +239,7 @@ class TestScanPipelineRejections:
         )
         assert result.outcome == "accepted"
         assert result.liveness_passed is False  # recorded but not blocking
+        assert abs(result.liveness_score - 0.1) < 0.001
 
     def test_unknown_face(self) -> None:
         engine = FakeFaceEngine()
@@ -269,6 +270,111 @@ class TestScanPipelineRejections:
                 settings=settings,
             )
         assert exc_info.value.code == ErrorCode.FACE_TOO_SMALL
+
+    def test_low_confidence(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+
+        # Get target vector
+        target_vector = gallery._vectors[0]
+
+        # Create a query vector that has dot product 0.40 with target_vector
+        # 0.40 is between low_confidence_threshold (0.38) and match_threshold (0.45)
+        rng = np.random.default_rng(42)
+        random_vec = rng.standard_normal(len(target_vector))
+        orthogonal = random_vec - np.dot(random_vec, target_vector) * target_vector
+        orthogonal /= np.linalg.norm(orthogonal)
+        query_vector = 0.40 * target_vector + np.sqrt(1.0 - 0.40**2) * orthogonal
+
+        # Override embed method in engine to return query_vector
+        class CustomEmbedEngine(FakeFaceEngine):
+            def embed(self, aligned: np.ndarray) -> Embedding:
+                return Embedding(
+                    vector=query_vector,
+                    model_name=self._model_name,
+                    model_version=self._model_version,
+                )
+
+        custom_engine = CustomEmbedEngine()
+        custom_engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+
+        settings = default_settings()
+        settings["face.low_confidence_threshold"] = 0.38
+        settings["face.match_threshold"] = 0.45
+
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(),
+                engine=custom_engine,
+                gallery=gallery,
+                settings=settings,
+            )
+        assert exc_info.value.code == ErrorCode.LOW_CONFIDENCE
+
+    def test_ambiguous_match(self) -> None:
+        engine = FakeFaceEngine()
+
+        # Enroll two people
+        entries = []
+        for person_name, person_id in [("alice", PERSON_A_ID), ("bob", PERSON_B_ID)]:
+            engine.next_result(person=person_name, n_faces=1)
+            dummy_img = np.zeros((240, 320, 3), dtype=np.uint8)
+            dets = engine.detect(dummy_img)
+            aligned = engine.align(dummy_img, dets[0].landmarks)
+            emb = engine.embed(aligned)
+            entries.append(
+                GalleryEntry(person_id=person_id, embedding_id=uuid4(), vector=emb.vector)
+            )
+        gallery = GalleryIndex(version_state=GalleryVersionState())
+        gallery.load(entries)
+
+        # We want the query vector to match alice at 0.50, but also match bob at 0.48
+        # So top1 = alice (0.50), top2 = bob (0.48), margin = 0.02 < match_margin (0.05)
+        # We can construct such a vector using linear algebra
+        v1 = gallery._vectors[0]  # alice
+        v2 = gallery._vectors[1]  # bob
+
+        # We want q @ v1 = 0.50, q @ v2 = 0.48
+        d = np.dot(v1, v2)
+        c2 = (0.48 - 0.50 * d) / (1.0 - d**2)
+        c1 = 0.50 - c2 * d
+
+        proj = c1 * v1 + c2 * v2
+        proj_norm = np.linalg.norm(proj)
+        assert proj_norm <= 1.0
+
+        rng = np.random.default_rng(42)
+        random_vec = rng.standard_normal(len(v1))
+        # Orthogonalize against both v1 and v2
+        ortho = random_vec - np.dot(random_vec, v1) * v1
+        ortho = ortho - np.dot(ortho, v2) * v2
+        ortho /= np.linalg.norm(ortho)
+
+        query_vector = proj + np.sqrt(1.0 - proj_norm**2) * ortho
+
+        class CustomEmbedEngine(FakeFaceEngine):
+            def embed(self, aligned: np.ndarray) -> Embedding:
+                return Embedding(
+                    vector=query_vector,
+                    model_name=self._model_name,
+                    model_version=self._model_version,
+                )
+
+        custom_engine = CustomEmbedEngine()
+        custom_engine.next_result(person="alice", score=0.9, liveness=0.95, n_faces=1)
+
+        settings = default_settings()
+        settings["face.match_threshold"] = 0.45
+        settings["face.match_margin"] = 0.05
+
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(),
+                engine=custom_engine,
+                gallery=gallery,
+                settings=settings,
+            )
+        assert exc_info.value.code == ErrorCode.AMBIGUOUS
 
 
 class TestScanPipelineCooldown:
@@ -332,3 +438,97 @@ class TestScanPipelineTimings:
         assert result.timings.embed_ms >= 0
         assert result.timings.match_ms >= 0
         assert result.timings.total_ms > 0
+
+
+class TestScanPipelineRateLimit:
+    def test_device_rate_limit(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+        cd = InMemoryCooldownChecker()
+
+        settings = default_settings()
+        settings["scan.rate_per_second"] = 1
+
+        # First scan passes rate limit check (but cooldown isn't active on first call)
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        run_scan_pipeline(
+            _make_scan_input(), engine=engine, gallery=gallery, cooldown=cd, settings=settings
+        )
+
+        # Second scan in same second fails rate limit check
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(), engine=engine, gallery=gallery, cooldown=cd, settings=settings
+            )
+        assert exc_info.value.code == ErrorCode.RATE_LIMITED
+
+    def test_unknown_face_lockout(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = GalleryIndex(version_state=GalleryVersionState())
+        gallery.load([])
+        cd = InMemoryCooldownChecker()
+
+        settings = default_settings()
+        settings["scan.unknown_rate_per_minute"] = 2
+        settings["scan.unknown_lockout_seconds"] = 10
+
+        # First unknown face passes
+        engine.next_result(person="stranger1", n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(), engine=engine, gallery=gallery, cooldown=cd, settings=settings
+            )
+        assert exc_info.value.code == ErrorCode.UNKNOWN_FACE
+
+        # Second unknown face passes
+        engine.next_result(person="stranger2", n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(), engine=engine, gallery=gallery, cooldown=cd, settings=settings
+            )
+        assert exc_info.value.code == ErrorCode.UNKNOWN_FACE
+
+        # Third unknown face hits rate limit
+        engine.next_result(person="stranger3", n_faces=1)
+        with pytest.raises(DomainError) as exc_info:
+            run_scan_pipeline(
+                _make_scan_input(), engine=engine, gallery=gallery, cooldown=cd, settings=settings
+            )
+        assert exc_info.value.code == ErrorCode.RATE_LIMITED
+
+
+class TestScanPipelineImpossibleTravel:
+    def test_impossible_travel_flagged(self) -> None:
+        engine = FakeFaceEngine()
+        gallery = _make_gallery_with_person(PERSON_A, PERSON_A_ID, engine)
+        cd = InMemoryCooldownChecker()
+
+        settings = default_settings()
+        settings["scan.cooldown_seconds"] = 0  # disable cooldown for this test
+        settings["scan.min_inter_location_seconds"] = 60
+
+        # First scan at Location 1
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        res1 = run_scan_pipeline(
+            _make_scan_input(location_id=LOCATION_ID, location_source="device_fixed"),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+        assert res1.outcome == "accepted"
+
+        # Second scan immediately at Location 2
+        # Different location within 60s from device_fixed source -> flags conflict
+        LOCATION_2_ID = UUID("22222222-2222-2222-2222-222222222222")
+        engine.next_result(person=PERSON_A, score=0.9, liveness=0.95, n_faces=1)
+        res2 = run_scan_pipeline(
+            _make_scan_input(location_id=LOCATION_2_ID, location_source="device_fixed"),
+            engine=engine,
+            gallery=gallery,
+            cooldown=cd,
+            settings=settings,
+        )
+        assert res2.outcome == "location_conflict"
+
