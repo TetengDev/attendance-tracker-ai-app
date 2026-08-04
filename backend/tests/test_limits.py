@@ -11,7 +11,9 @@ import pytest
 import redis
 
 from backend.app.config import get_settings
+from backend.app.scan.cooldown import InMemoryCooldownChecker
 from backend.app.scan.limits import RedisCooldownChecker
+from backend.app.scan.pipeline import CooldownChecker
 
 
 @pytest.fixture
@@ -29,9 +31,12 @@ def redis_client() -> Iterator[redis.Redis]:
         client.delete(*keys)
 
 
-@pytest.fixture
-def checker() -> Iterator[RedisCooldownChecker]:
-    chk = RedisCooldownChecker()
+@pytest.fixture(params=["in_memory", "redis"])
+def checker(request: pytest.FixtureRequest) -> Iterator[CooldownChecker]:
+    if request.param == "in_memory":
+        chk: CooldownChecker = InMemoryCooldownChecker()
+    else:
+        chk = RedisCooldownChecker()
     chk.reset()
     yield chk
     chk.reset()
@@ -39,7 +44,7 @@ def checker() -> Iterator[RedisCooldownChecker]:
 
 # ── Cooldown Tests ────────────────────────────────────────────────────────────
 
-def test_check_cooldown_location_scope(checker: RedisCooldownChecker) -> None:
+def test_check_cooldown_location_scope(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_id = uuid4()
     device_id = uuid4()
@@ -90,7 +95,7 @@ def test_check_cooldown_location_scope(checker: RedisCooldownChecker) -> None:
     ) is None
 
 
-def test_check_cooldown_global_scope(checker: RedisCooldownChecker) -> None:
+def test_check_cooldown_global_scope(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_id = uuid4()
     other_location = uuid4()
@@ -119,7 +124,7 @@ def test_check_cooldown_global_scope(checker: RedisCooldownChecker) -> None:
     ) is not None
 
 
-def test_check_cooldown_device_scope(checker: RedisCooldownChecker) -> None:
+def test_check_cooldown_device_scope(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_id = uuid4()
     device_id = uuid4()
@@ -160,7 +165,7 @@ def test_check_cooldown_device_scope(checker: RedisCooldownChecker) -> None:
 
 # ── Impossible Travel Tests ────────────────────────────────────────────────────
 
-def test_check_impossible_travel_both_fixed(checker: RedisCooldownChecker) -> None:
+def test_check_impossible_travel_both_fixed(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_a = uuid4()
     location_b = uuid4()
@@ -201,7 +206,7 @@ def test_check_impossible_travel_both_fixed(checker: RedisCooldownChecker) -> No
     ) is False
 
 
-def test_check_impossible_travel_roaming_ignored(checker: RedisCooldownChecker) -> None:
+def test_check_impossible_travel_roaming_ignored(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_a = uuid4()
     location_b = uuid4()
@@ -240,7 +245,7 @@ def test_check_impossible_travel_roaming_ignored(checker: RedisCooldownChecker) 
     ) is False
 
 
-def test_check_impossible_travel_same_location(checker: RedisCooldownChecker) -> None:
+def test_check_impossible_travel_same_location(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_a = uuid4()
     now = datetime.now(tz=UTC)
@@ -264,7 +269,7 @@ def test_check_impossible_travel_same_location(checker: RedisCooldownChecker) ->
 
 # ── Rate Limiting Tests ────────────────────────────────────────────────────────
 
-def test_check_rate_limit(checker: RedisCooldownChecker) -> None:
+def test_check_rate_limit(checker: CooldownChecker) -> None:
     device_id = uuid4()
 
     # Rate limit: 2 per second
@@ -286,7 +291,7 @@ def test_check_rate_limit(checker: RedisCooldownChecker) -> None:
 
 # ── Unknown Face Lockout Tests ───────────────────────────────────────────────
 
-def test_check_unknown_rate_lockout(checker: RedisCooldownChecker) -> None:
+def test_check_unknown_rate_lockout(checker: CooldownChecker) -> None:
     device_id = uuid4()
 
     # Lockout threshold: 3 per minute (lowered for test efficiency)
@@ -324,3 +329,68 @@ def test_check_unknown_rate_lockout(checker: RedisCooldownChecker) -> None:
         unknown_rate_per_minute=limit,
         unknown_lockout_seconds=lockout_seconds,
     ) is False
+
+
+def test_check_unknown_rate_lockout_extended(checker: CooldownChecker) -> None:
+    from unittest.mock import patch
+    device_id = uuid4()
+    limit = 3
+    lockout_seconds = 120  # 2 minutes
+
+    start_time = 1700000000.0
+
+    with patch("time.time") as mock_time, patch("time.monotonic") as mock_mono:
+        # Initial time
+        current_time = start_time
+        mock_time.return_value = current_time
+        mock_mono.return_value = current_time
+
+        # Send 3 unknown faces
+        for _ in range(limit):
+            assert checker.check_unknown_rate(
+                device_id,
+                unknown_rate_per_minute=limit,
+                unknown_lockout_seconds=lockout_seconds,
+            ) is False
+            # Increment time slightly
+            current_time += 1.0
+            mock_time.return_value = current_time
+            mock_mono.return_value = current_time
+
+        # 4th unknown face -> locked out
+        assert checker.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=limit,
+            unknown_lockout_seconds=lockout_seconds,
+        ) is True
+
+        # Fast forward time by 65 seconds (total elapsed = 68 seconds)
+        # This is more than 60 seconds (rate window), but less than 120 seconds (lockout window)
+        current_time += 65.0
+        mock_time.return_value = current_time
+        mock_mono.return_value = current_time
+
+        # Should STILL be locked out!
+        assert checker.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=limit,
+            unknown_lockout_seconds=lockout_seconds,
+        ) is True
+
+        # Fast forward past lockout window (total elapsed = 125 seconds)
+        current_time += 55.0
+        mock_time.return_value = current_time
+        mock_mono.return_value = current_time
+
+        # Simulating TTL expiration in Redis (which has its own clock)
+        if hasattr(checker, "client"):
+            checker.client.delete(f"scan:lockout:{device_id}")
+
+        # Lockout expired -> should be allowed now
+        assert checker.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=limit,
+            unknown_lockout_seconds=lockout_seconds,
+        ) is False
+
+

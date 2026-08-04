@@ -39,19 +39,32 @@ class RedisCooldownChecker(CooldownChecker):
 
         # Register Lua script for unknown-face lockout rate limiting
         self._unknown_rate_script = self.client.register_script("""
-            local key = KEYS[1]
+            local unknown_key = KEYS[1]
+            local lockout_key = KEYS[2]
             local now = tonumber(ARGV[1])
             local limit = tonumber(ARGV[2])
             local lockout_window = tonumber(ARGV[3])
             local member = ARGV[4]
 
-            redis.call('ZREMRANGEBYSCORE', key, 0, now - lockout_window)
-            local recent = redis.call('ZCOUNT', key, now - 60.0, now)
-            if tonumber(recent) >= limit then
+            -- Check if currently locked out
+            if redis.call('EXISTS', lockout_key) == 1 then
+                return 1
+            end
+
+            -- Clean up old entries in the sliding window (60 seconds)
+            redis.call('ZREMRANGEBYSCORE', unknown_key, 0, now - 60.0)
+
+            -- Count recent unknown scans
+            local recent = redis.call('ZCARD', unknown_key)
+            if recent >= limit then
+                -- Trigger lockout: set lockout key and clear unknown scans
+                redis.call('SET', lockout_key, 1, 'EX', lockout_window)
+                redis.call('DEL', unknown_key)
                 return 1
             else
-                redis.call('ZADD', key, now, member)
-                redis.call('EXPIRE', key, lockout_window + 2)
+                -- Add current scan and set TTL on the sliding window key
+                redis.call('ZADD', unknown_key, now, member)
+                redis.call('EXPIRE', unknown_key, 62)
                 return 0
             end
         """)
@@ -174,11 +187,12 @@ class RedisCooldownChecker(CooldownChecker):
         unknown_rate_per_minute: int,
         unknown_lockout_seconds: int,
     ) -> bool:
-        key = f"scan:unknown:{device_id}"
+        unknown_key = f"scan:unknown:{device_id}"
+        lockout_key = f"scan:lockout:{device_id}"
         now = time.time()
         member = f"{now}:{uuid4()}"
         res = self._unknown_rate_script(
-            keys=[key],
+            keys=[unknown_key, lockout_key],
             args=[now, unknown_rate_per_minute, unknown_lockout_seconds, member]
         )
         return bool(res)
