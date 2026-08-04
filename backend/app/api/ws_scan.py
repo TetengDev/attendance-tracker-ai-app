@@ -181,7 +181,7 @@ async def kiosk_websocket_endpoint(
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
-                    error=ErrorBody(code=ErrorCode.LOW_QUALITY, message=str(exc)),
+                    error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
                 ).model_dump(mode="json")
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -231,7 +231,7 @@ async def kiosk_websocket_endpoint(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
                     error=ErrorBody(
-                        code=ErrorCode.LOW_QUALITY,
+                        code=ErrorCode.DEVICE_REVOKED,
                         message="Fixed devices require a configured location",
                     ),
                 ).model_dump(mode="json")
@@ -300,6 +300,75 @@ async def kiosk_websocket_endpoint(
 
                 elif msg_type == ClientMessageType.FRAME_BURST:
                     burst = FrameBurst.model_validate(payload)
+
+                    # Check for existing success event with the same idempotency key
+                    stmt = select(AttendanceEvent).where(
+                        AttendanceEvent.idempotency_key == burst.idempotency_key
+                    )
+                    existing_res = await session.execute(stmt)
+                    existing = existing_res.scalar_one_or_none()
+                    if existing is not None:
+                        logger.info(
+                            "Found existing success event for idempotency key %s",
+                            burst.idempotency_key,
+                        )
+                        from backend.app.models.people import Person as DbPerson
+
+                        display_name = "Unknown Person"
+                        if existing.person_id:
+                            db_person = await session.get(DbPerson, existing.person_id)
+                            if db_person:
+                                display_name = db_person.display_name
+                        await websocket.send_json(
+                            Result(
+                                type=ServerMessageType.RESULT,
+                                status=existing.outcome,
+                                person=Person(
+                                    id=str(existing.person_id) if existing.person_id else "",
+                                    display_name=display_name,
+                                    photo_url=None,
+                                )
+                                if existing.person_id
+                                else None,
+                                direction=existing.direction,
+                                occurred_at=existing.occurred_at,
+                                record_status=None,
+                                committed=True,
+                            ).model_dump(mode="json")
+                        )
+                        continue
+
+                    # Check for existing failed event (unknown_face, ambiguous, low_confidence)
+                    stmt_err = select(AttendanceEvent).where(
+                        AttendanceEvent.idempotency_key.like(f"{burst.idempotency_key}-%")
+                    )
+                    existing_err_res = await session.execute(stmt_err)
+                    existing_err = existing_err_res.scalar_one_or_none()
+                    if existing_err is not None:
+                        logger.info(
+                            "Found existing failed event for idempotency key %s",
+                            burst.idempotency_key,
+                        )
+                        err_code = ErrorCode.UNKNOWN_FACE
+                        for ec in [
+                            ErrorCode.AMBIGUOUS,
+                            ErrorCode.LOW_CONFIDENCE,
+                            ErrorCode.UNKNOWN_FACE,
+                        ]:
+                            if ec.value.lower() in existing_err.idempotency_key:
+                                err_code = ec
+                                break
+                        await websocket.send_json(
+                            ErrorMessage(
+                                type=ServerMessageType.ERROR,
+                                error=ErrorBody(
+                                    code=err_code,
+                                    message=f"Cached scan rejection: {err_code.value}",
+                                ),
+                            ).model_dump(mode="json")
+                        )
+                        continue
+
                     await websocket.send_json({"type": ServerMessageType.DETECTED})
                     await websocket.send_json({"type": ServerMessageType.CHECKING})
 
@@ -330,7 +399,7 @@ async def kiosk_websocket_endpoint(
                     resolved_settings = await resolve_db_settings(session, context)
 
                     # Process each frame in the burst
-                    outputs: list[ScanOutput] = []
+                    outputs: list[tuple[ScanOutput, int]] = []
                     errors: list[DomainError] = []
 
                     for frame in burst.frames:
@@ -364,12 +433,13 @@ async def kiosk_websocket_endpoint(
                                 cooldown=global_cooldown_checker,
                                 settings=resolved_settings.settings,
                             )
-                            outputs.append(out)
+                            outputs.append((out, frame.monotonic_offset_ms))
                         except DomainError as exc:
                             errors.append(exc)
 
                     # ── Combine burst results ─────────────────────────────
                     final_output: ScanOutput | None = None
+                    final_offset: int = 0
                     final_error: DomainError | None = None
 
                     # Rule 1: Liveness failure in any frame denies the entire burst (denied_spoof)
@@ -387,14 +457,16 @@ async def kiosk_websocket_endpoint(
 
                     else:
                         # Filter out successful matches
-                        successes = [out for out in outputs if out.person_id is not None]
+                        successes = [item for item in outputs if item[0].person_id is not None]
 
                         if len(successes) > 0:
                             # Verify if they all match the same person
-                            matched_person_ids = {out.person_id for out in successes}
+                            matched_person_ids = {item[0].person_id for item in successes}
                             if len(matched_person_ids) == 1:
                                 # Accept: choose the one with the higher score
-                                final_output = max(successes, key=lambda x: x.top1_score or 0.0)
+                                final_item = max(successes, key=lambda x: x[0].top1_score or 0.0)
+                                final_output = final_item[0]
+                                final_offset = final_item[1]
                             else:
                                 # Ambiguous: multiple people matched in same burst
                                 final_error = DomainError(
@@ -444,7 +516,7 @@ async def kiosk_websocket_endpoint(
                             client_captured_at=final_output.server_received_at,  # placeholder
                             server_received_at=final_output.server_received_at,
                             occurred_at=final_output.occurred_at,
-                            monotonic_offset_ms=frame.monotonic_offset_ms,
+                            monotonic_offset_ms=final_offset,
                             was_backdated=final_output.was_backdated,
                             top1_score=final_output.top1_score,
                             top2_other_person_score=final_output.top2_other_person_score,
@@ -524,7 +596,19 @@ async def kiosk_websocket_endpoint(
                 await websocket.send_json(
                     ErrorMessage(
                         type=ServerMessageType.ERROR,
-                        error=ErrorBody(code=ErrorCode.LOW_QUALITY, message=str(exc)),
+                        error=ErrorBody(code=ErrorCode.DEVICE_REVOKED, message=str(exc)),
+                    ).model_dump(mode="json")
+                )
+            except Exception:
+                await session.rollback()
+                logger.exception("Unexpected error processing kiosk message")
+                await websocket.send_json(
+                    ErrorMessage(
+                        type=ServerMessageType.ERROR,
+                        error=ErrorBody(
+                            code=ErrorCode.SCAN_BACKEND_UNAVAILABLE,
+                            message="Internal scan backend error",
+                        ),
                     ).model_dump(mode="json")
                 )
     except WebSocketDisconnect:

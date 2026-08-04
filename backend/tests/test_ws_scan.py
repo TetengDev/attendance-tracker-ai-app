@@ -107,6 +107,7 @@ class MockSession:
                 version=1,
             )
         ]
+        self.existing_event: AttendanceEvent | None = None
 
     async def get(self, model: type, identifier: Any) -> Any | None:
         if model is Device:
@@ -144,6 +145,8 @@ class MockSession:
             return MockResult([])
         if "FROM scan_sessions" in sql:
             return MockResult(self.scan_session)
+        if "FROM attendance_events" in sql:
+            return MockResult(self.existing_event)
 
         return MockResult(None)
 
@@ -239,6 +242,20 @@ class TestWebSocketHandshake:
 
     def test_handshake_revoked_device(self, client: TestClient, mock_session: MockSession) -> None:
         mock_session.device.token_hash = hash_admin_password("another-token")
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+
+    def test_handshake_fixed_device_missing_location(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.device.__dict__["location_id"] = None
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
                 {
@@ -432,3 +449,94 @@ class TestWebSocketFrameBurst:
             err = ws.receive_json()
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.LIVENESS_FAILED.value
+
+    def test_frame_burst_idempotency_cache(self, client: TestClient, mock_session: MockSession) -> None:
+        # Seed an existing successful event in mock session
+        mock_session.existing_event = AttendanceEvent(
+            idempotency_key="burst-dup-123",
+            person_id=PERSON_A_ID,
+            device_id=DEVICE_ID,
+            session_id=SESSION_ID,
+            location_id=LOCATION_ID,
+            direction="in",
+            outcome="accepted",
+            location_source="device_fixed",
+            client_captured_at=datetime.now(tz=UTC),
+            server_received_at=datetime.now(tz=UTC),
+            occurred_at=datetime.now(tz=UTC),
+            monotonic_offset_ms=100,
+            was_backdated=False,
+            top1_score=0.95,
+        )
+
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "frame_burst",
+                    "idempotency_key": "burst-dup-123",
+                    "burst_seq": 1,
+                    "frames": [
+                        {
+                            "jpeg_b64": "dGVzdA==",  # valid base64
+                            "bbox": (10, 10, 100, 100),
+                            "monotonic_offset_ms": 100,
+                        }
+                    ],
+                }
+            )
+            # Response should bypass pipeline and return cached success immediately
+            res = ws.receive_json()
+            assert res["type"] == "result"
+            assert res["status"] == "accepted"
+            assert res["person"]["id"] == str(PERSON_A_ID)
+            assert res["person"]["display_name"] == "Alice"
+
+    def test_frame_burst_database_error_rollback(
+        self, client: TestClient, mock_session: MockSession, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Make commit raise an unexpected exception
+        class MockDatabaseError(Exception):
+            pass
+
+        async def mock_commit() -> None:
+            raise MockDatabaseError("Mock database error")
+
+        monkeypatch.setattr(mock_session, "commit", mock_commit)
+
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "heartbeat",
+                    "fps": 30.0,
+                    "queue_depth": 0,
+                    "error_count": 0,
+                    "clock_skew_ms": 12,
+                }
+            )
+            # Should receive SCAN_BACKEND_UNAVAILABLE error
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.SCAN_BACKEND_UNAVAILABLE.value
+            # Verify session rollback was called
+            assert mock_session.rolled_back is True
+
