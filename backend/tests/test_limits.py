@@ -35,11 +35,19 @@ def redis_client() -> Iterator[redis.Redis]:
 def checker(request: pytest.FixtureRequest) -> Iterator[CooldownChecker]:
     if request.param == "in_memory":
         chk: CooldownChecker = InMemoryCooldownChecker()
+        chk.reset()
+        yield chk
+        chk.reset()
     else:
-        chk = RedisCooldownChecker()
-    chk.reset()
-    yield chk
-    chk.reset()
+        try:
+            chk = RedisCooldownChecker()
+            chk.client.ping()
+        except (redis.RedisError, ConnectionError):
+            pytest.skip("Redis is not available")
+            return
+        chk.reset()
+        yield chk
+        chk.reset()
 
 
 # ── Cooldown Tests ────────────────────────────────────────────────────────────

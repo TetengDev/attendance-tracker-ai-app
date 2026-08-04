@@ -421,5 +421,6 @@ paths = [
   "backend/app/scan/limits.py",
   "backend/app/scan/cooldown.py",
   "backend/tests/test_limits.py",
+  ".github/workflows/ci.yml",
   "docs/ownership.toml",
 ]
