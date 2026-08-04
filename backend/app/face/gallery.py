@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.settings import SettingsVersion
+from backend.app.settings import get_float_setting
 from backend.app.settings.registry import default_settings
 
 EMBEDDING_DIMENSIONS = 512
@@ -42,9 +43,9 @@ class MatchThresholds:
     def from_settings(cls, settings: dict[str, object] | None = None) -> MatchThresholds:
         values = default_settings() if settings is None else settings
         return cls(
-            match_threshold=_float_setting(values, "face.match_threshold"),
-            match_margin=_float_setting(values, "face.match_margin"),
-            low_confidence_threshold=_float_setting(values, "face.low_confidence_threshold"),
+            match_threshold=get_float_setting(values, "face.match_threshold"),
+            match_margin=get_float_setting(values, "face.match_margin"),
+            low_confidence_threshold=get_float_setting(values, "face.low_confidence_threshold"),
         )
 
 
@@ -320,12 +321,6 @@ def _decision_for(
         return MatchDecision.LOW_CONFIDENCE
     return MatchDecision.UNKNOWN
 
-
-def _float_setting(settings: dict[str, object], key: str) -> float:
-    value = settings[key]
-    if not isinstance(value, int | float):
-        raise TypeError(f"{key} must be numeric")
-    return float(value)
 
 
 async def current_gallery_version(session: AsyncSession) -> int:
