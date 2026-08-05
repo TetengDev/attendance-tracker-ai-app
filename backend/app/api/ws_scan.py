@@ -167,6 +167,23 @@ from backend.app.api.enrollment import get_face_engine, get_gallery_index
 # ---------------------------------------------------------------------------
 
 
+def get_client_ip(websocket: WebSocket) -> str:
+    """Resolve client IP address, supporting X-Forwarded-For for reverse proxies."""
+    forwarded_for = websocket.headers.get("x-forwarded-for")
+    if forwarded_for:
+        # X-Forwarded-For can contain a list of proxy IPs; leftmost is original client
+        client_ip = forwarded_for.split(",")[0].strip()
+        if client_ip:
+            return client_ip
+
+    if websocket.client is not None:
+        host = websocket.client.host
+        if host == "testclient":
+            return "127.0.0.1"
+        return host
+    return "127.0.0.1"
+
+
 @router.websocket("/ws")
 async def kiosk_websocket_endpoint(
     websocket: WebSocket,
@@ -244,9 +261,7 @@ async def kiosk_websocket_endpoint(
             return
 
         # Check allowed CIDRs
-        client_ip = websocket.client.host if websocket.client is not None else "127.0.0.1"
-        if client_ip == "testclient":
-            client_ip = "127.0.0.1"
+        client_ip = get_client_ip(websocket)
         if not is_ip_allowed(client_ip, device.allowed_cidrs):
             await websocket.send_json(
                 ErrorMessage(
