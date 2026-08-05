@@ -70,6 +70,7 @@ SETTINGS_SCHEMA: dict[str, SettingSpec] = {
     "face.match_threshold": SettingSpec("float", 0.45, "O", min=0.20, max=0.80),
     "face.match_margin": SettingSpec("float", 0.05, "O", min=0.0, max=0.30),
     "face.low_confidence_threshold": SettingSpec("float", 0.38, "O", min=0.20, max=0.80),
+    "face.duplicate_threshold": SettingSpec("float", 0.75, "O", min=0.50, max=0.99),
     "face.low_confidence_action": SettingSpec(
         "enum", LowConfidenceAction.REJECT.value, "O·L", enum=tuple(e.value for e in LowConfidenceAction)
     ),
