@@ -162,26 +162,7 @@ export function App() {
     };
   }, [deviceToken]);
 
-  // Request camera stream and attach to video element
-  useEffect(() => {
-    navigator.mediaDevices
-      .getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: "user",
-        },
-      })
-      .then((stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      })
-      .catch((err) => {
-        console.error("Camera access failed:", err);
-        setGatingStatus("Camera access denied");
-      });
-  }, []);
+
 
   // Frame gating callbacks
   const handleBurstCaptured = useCallback((burst: FrameBurst) => {
@@ -289,7 +270,8 @@ export function App() {
 
       // 5. Upload enrollment face asset
       const formData = new FormData();
-      formData.append("file", blob, "enrollment.jpg");
+      formData.append("files", blob, "enrollment.jpg");
+      formData.append("policy_version", "1.0");
 
       const uploadRes = await fetch(`${apiBaseUrl}/api/enrollment/${person.id}/upload`, {
         method: "POST",
@@ -358,9 +340,9 @@ export function App() {
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-5xl gap-8 px-6 py-12 md:grid-cols-3">
+      <section className={`mx-auto grid max-w-5xl gap-8 px-6 py-12 ${import.meta.env.DEV ? "md:grid-cols-3" : "md:grid-cols-1 justify-center max-w-2xl"}`}>
         {/* Left Side: Scan Feed and Centering Overlays */}
-        <div className="md:col-span-2 flex flex-col gap-4">
+        <div className={import.meta.env.DEV ? "md:col-span-2 flex flex-col gap-4" : "flex flex-col gap-4"}>
           <div className="relative aspect-[4/3] rounded-3xl overflow-hidden border border-white/10 bg-black shadow-2xl">
             {/* Live Camera Feed */}
             <video
@@ -439,88 +421,90 @@ export function App() {
         </div>
 
         {/* Right Side: Setup instructions and Dev Tools */}
-        <div className="flex flex-col gap-6">
-          {/* Local Dev Controls */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-300">Local Dev Tools</h2>
-              <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 px-2 py-0.5 rounded-full uppercase font-mono">Ready</span>
-            </div>
-            
-            <p className="text-xs text-zinc-400 mb-6">
-              Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
-            </p>
-
-            <button
-              onClick={() => {
-                setShowEnroll(!showEnroll);
-                setEnrollSuccess(null);
-                setEnrollError(null);
-              }}
-              className="w-full rounded-2xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 mb-4"
-            >
-              {showEnroll ? "Close Enrollment" : "Enroll Face Profile"}
-            </button>
-
-            {showEnroll && (
-              <div className="space-y-4 pt-4 border-t border-white/5 animate-fade-in">
-                <div>
-                  <label htmlFor="enroll-name" className="block text-xs font-semibold text-zinc-400 uppercase mb-2">
-                    Person Name
-                  </label>
-                  <input
-                    id="enroll-name"
-                    type="text"
-                    placeholder="e.g. Alice Cooper"
-                    value={enrollName}
-                    onChange={(e) => setEnrollName(e.target.value)}
-                    disabled={isEnrolling}
-                    className="w-full rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                  />
-                </div>
-
-                <button
-                  onClick={enrollFace}
-                  disabled={isEnrolling || !enrollName.trim()}
-                  className="w-full rounded-xl bg-cyan-500 disabled:bg-zinc-800 disabled:text-zinc-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/10 flex items-center justify-center gap-2"
-                >
-                  {isEnrolling ? (
-                    <>
-                      <div className="h-4 w-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                      Registering Biometrics...
-                    </>
-                  ) : (
-                    "Capture & Register"
-                  )}
-                </button>
-
-                {enrollSuccess && (
-                  <div className="rounded-xl bg-emerald-950/50 border border-emerald-500/20 p-3 text-xs text-emerald-300">
-                    {enrollSuccess}
-                  </div>
-                )}
-
-                {enrollError && (
-                  <div className="rounded-xl bg-red-950/50 border border-red-500/20 p-3 text-xs text-red-300">
-                    {enrollError}
-                  </div>
-                )}
+        {import.meta.env.DEV && (
+          <div className="flex flex-col gap-6">
+            {/* Local Dev Controls */}
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-300">Local Dev Tools</h2>
+                <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 px-2 py-0.5 rounded-full uppercase font-mono">Ready</span>
               </div>
-            )}
-          </div>
+              
+              <p className="text-xs text-zinc-400 mb-6">
+                Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
+              </p>
 
-          {/* Quickstart Reference Box */}
-          <div className="rounded-3xl border border-white/5 bg-zinc-900/50 p-6 space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Step-by-step Test</h3>
-            <ol className="list-decimal list-inside space-y-2.5 text-xs text-zinc-400">
-              <li>Click <span className="text-cyan-300">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
-              <li>Toggle <span className="text-cyan-300">Enroll Face Profile</span>.</li>
-              <li>Input your name and click <span className="text-cyan-300">Capture & Register</span> to save your face.</li>
-              <li>Wait for success confirmation.</li>
-              <li>Look directly at the webcam within the guide lines to trigger the scan punch!</li>
-            </ol>
+              <button
+                onClick={() => {
+                  setShowEnroll(!showEnroll);
+                  setEnrollSuccess(null);
+                  setEnrollError(null);
+                }}
+                className="w-full rounded-2xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 mb-4"
+              >
+                {showEnroll ? "Close Enrollment" : "Enroll Face Profile"}
+              </button>
+
+              {showEnroll && (
+                <div className="space-y-4 pt-4 border-t border-white/5 animate-fade-in">
+                  <div>
+                    <label htmlFor="enroll-name" className="block text-xs font-semibold text-zinc-400 uppercase mb-2">
+                      Person Name
+                    </label>
+                    <input
+                      id="enroll-name"
+                      type="text"
+                      placeholder="e.g. Alice Cooper"
+                      value={enrollName}
+                      onChange={(e) => setEnrollName(e.target.value)}
+                      disabled={isEnrolling}
+                      className="w-full rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+
+                  <button
+                    onClick={enrollFace}
+                    disabled={isEnrolling || !enrollName.trim()}
+                    className="w-full rounded-xl bg-cyan-500 disabled:bg-zinc-800 disabled:text-zinc-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/10 flex items-center justify-center gap-2"
+                  >
+                    {isEnrolling ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                        Registering Biometrics...
+                      </>
+                    ) : (
+                      "Capture & Register"
+                    )}
+                  </button>
+
+                  {enrollSuccess && (
+                    <div className="rounded-xl bg-emerald-950/50 border border-emerald-500/20 p-3 text-xs text-emerald-300">
+                      {enrollSuccess}
+                    </div>
+                  )}
+
+                  {enrollError && (
+                    <div className="rounded-xl bg-red-950/50 border border-red-500/20 p-3 text-xs text-red-300">
+                      {enrollError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Quickstart Reference Box */}
+            <div className="rounded-3xl border border-white/5 bg-zinc-900/50 p-6 space-y-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Step-by-step Test</h3>
+              <ol className="list-decimal list-inside space-y-2.5 text-xs text-zinc-400">
+                <li>Click <span className="text-cyan-300">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
+                <li>Toggle <span className="text-cyan-300">Enroll Face Profile</span>.</li>
+                <li>Input your name and click <span className="text-cyan-300">Capture & Register</span> to save your face.</li>
+                <li>Wait for success confirmation.</li>
+                <li>Look directly at the webcam within the guide lines to trigger the scan punch!</li>
+              </ol>
+            </div>
           </div>
-        </div>
+        )}
       </section>
     </main>
   );
