@@ -67,7 +67,7 @@ export function App() {
         throw new Error(`Token exchange failed: HTTP ${res.status}`);
       }
       const data = await res.json();
-      setDeviceToken(data.access_token);
+      setDeviceToken(data.device_token_jwt);
     } catch (err: any) {
       setWsStatus("disconnected");
       setWsError(err.message || "Failed to exchange device token");
@@ -215,7 +215,10 @@ export function App() {
           "x-admin-id": SEED_ADMIN_ID,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ display_name: enrollName.trim() }),
+        body: JSON.stringify({
+          display_name: enrollName.trim(),
+          kind: "staff",
+        }),
       });
       if (!personRes.ok) {
         throw new Error(`Failed to create person: HTTP ${personRes.status}`);
@@ -231,6 +234,8 @@ export function App() {
         },
         body: JSON.stringify({
           person_id: person.id,
+          grantor: "self",
+          method: "admin_attestation",
           policy_version: "1.0",
         }),
       });
