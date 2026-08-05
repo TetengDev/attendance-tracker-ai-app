@@ -464,5 +464,7 @@ paths = [
   "backend/tests/test_cors.py",
   "docs/ownership.toml",
   "pyproject.toml",
+  "uv.lock",
+  "frontend/apps/kiosk/src/App.tsx",
 ]
 
