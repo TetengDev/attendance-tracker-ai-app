@@ -195,6 +195,6 @@ async def refresh_device_token(
 
     # Issue short-lived JWT (uses KEK SecretStr string value as the secret)
     jwt_secret_val = settings.jwt_secret.get_secret_value()
-    token_jwt = issue_device_jwt(device.id, payload.device_token, jwt_secret_val)
+    token_jwt = issue_device_jwt(device.id, jwt_secret_val)
 
     return TokenResponse(device_token_jwt=token_jwt)
