@@ -50,9 +50,26 @@ export function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
 
+  // Live console logs state
+  const [logs, setLogs] = useState<string[]>([]);
+
+  // Logger helper that logs locally to state and uploads to the server log file
+  const logMessage = useCallback((msg: string, level: "info" | "error" = "info") => {
+    const time = new Date().toLocaleTimeString();
+    const formatted = `[${time}] ${msg}`;
+    setLogs((prev) => [formatted, ...prev].slice(0, 100));
+    
+    fetch(`${apiBaseUrl}/api/kiosk/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: `${level.toUpperCase()}: ${msg}` }),
+    }).catch((err) => console.error("Client log upload failed:", err));
+  }, []);
+
   // Fetch device JWT token
   const fetchToken = async () => {
     try {
+      logMessage("Exchanging seed device credentials for JWT scan token...", "info");
       setWsStatus("connecting");
       setWsError(null);
       const res = await fetch(`${apiBaseUrl}/api/kiosk/token`, {
@@ -67,8 +84,10 @@ export function App() {
         throw new Error(`Token exchange failed: HTTP ${res.status}`);
       }
       const data = await res.json();
+      logMessage("JWT token successfully exchanged.", "info");
       setDeviceToken(data.device_token_jwt);
     } catch (err: any) {
+      logMessage(`Token exchange failed: ${err.message || err}`, "error");
       setWsStatus("disconnected");
       setWsError(err.message || "Failed to exchange device token");
     }
@@ -79,10 +98,12 @@ export function App() {
     if (!deviceToken) return;
 
     const wsUrl = apiBaseUrl.replace(/^http/, "ws") + "/api/kiosk/ws";
+    logMessage(`Connecting to WebSocket interface: ${wsUrl}`, "info");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      logMessage("WebSocket connection opened. Sending hello handshake...", "info");
       setWsStatus("connected");
       // Send Hello Handshake
       ws.send(
@@ -113,13 +134,16 @@ export function App() {
     ws.onmessage = (event) => {
       try {
         const msg: ServerMessage = JSON.parse(event.data);
+        logMessage(`Received WebSocket event: ${msg.type}`, "info");
         if (msg.type === "ready") {
+          logMessage("WebSocket handshake success: ready for scans.", "info");
           setGatingStatus("Ready for face scan");
         } else if (msg.type === "checking") {
           setGatingStatus("Matching embedding...");
         } else if (msg.type === "result") {
           const result = msg as Result;
           if (result.status === "match" && result.person) {
+            logMessage(`Match result: ${result.person.display_name}`, "info");
             playBeep(880, "sine", 0.12);
             setTimeout(() => playBeep(1100, "sine", 0.15), 80);
             setScanResult(result);
@@ -127,22 +151,25 @@ export function App() {
             // Dismiss success card after 3s
             setTimeout(() => setScanResult(null), 3000);
           } else {
+            logMessage("Match result: unknown face (no match)", "error");
             playBeep(220, "triangle", 0.35);
             setScanError("Face not recognized");
             setTimeout(() => setScanError(null), 3000);
           }
         } else if (msg.type === "error") {
           const err = msg as ErrorMessage;
+          logMessage(`Scan error event received: ${err.error.message}`, "error");
           playBeep(220, "triangle", 0.35);
           setScanError(err.error.message);
           setTimeout(() => setScanError(null), 3000);
         }
       } catch (err) {
-        console.error("Failed to parse server message", err);
+        logMessage(`Failed to parse server message: ${err}`, "error");
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      logMessage(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "None"}`, "error");
       setWsStatus("disconnected");
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
@@ -150,26 +177,28 @@ export function App() {
     };
 
     ws.onerror = (err) => {
-      console.error("WebSocket error:", err);
+      logMessage("WebSocket interface error encountered", "error");
       setWsStatus("disconnected");
     };
 
     return () => {
+      logMessage("Cleaning up WebSocket connection...", "info");
       ws.close();
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, [deviceToken]);
-
-
+  }, [deviceToken, logMessage]);
 
   // Frame gating callbacks
   const handleBurstCaptured = useCallback((burst: FrameBurst) => {
+    logMessage(`Gating rules passed. Submitting burst: ${burst.idempotency_key} (${burst.frames.length} frames)`, "info");
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(burst));
+    } else {
+      logMessage("WebSocket not open. Dropped burst submission.", "error");
     }
-  }, []);
+  }, [logMessage]);
 
   const handleGatingFailed = useCallback((reason: string) => {
     // Translate gate warnings to human-friendly feedback
@@ -206,9 +235,11 @@ export function App() {
     setIsEnrolling(true);
     setEnrollSuccess(null);
     setEnrollError(null);
+    logMessage(`Starting face enrollment for: "${enrollName.trim()}"`, "info");
 
     try {
       // 1. Create a person record
+      logMessage("API Call: Creating person record...", "info");
       const personRes = await fetch(`${apiBaseUrl}/api/people`, {
         method: "POST",
         headers: {
@@ -224,8 +255,10 @@ export function App() {
         throw new Error(`Failed to create person: HTTP ${personRes.status}`);
       }
       const person = await personRes.json();
+      logMessage(`Person record created: UUID ${person.id}`, "info");
 
       // 2. Submit consent
+      logMessage("API Call: Submitting biometric consent...", "info");
       const consentRes = await fetch(`${apiBaseUrl}/api/consents/biometric-enrollment`, {
         method: "POST",
         headers: {
@@ -242,8 +275,10 @@ export function App() {
       if (!consentRes.ok) {
         throw new Error(`Failed to create consent: HTTP ${consentRes.status}`);
       }
+      logMessage("Biometric consent submitted successfully.", "info");
 
       // 3. Authorize consent
+      logMessage("API Call: Authorizing biometric consent...", "info");
       const authRes = await fetch(`${apiBaseUrl}/api/consents/biometric-enrollment/authorize`, {
         method: "POST",
         headers: {
@@ -258,8 +293,10 @@ export function App() {
       if (!authRes.ok) {
         throw new Error(`Failed to authorize consent: HTTP ${authRes.status}`);
       }
+      logMessage("Biometric consent authorized successfully.", "info");
 
       // 4. Capture a canvas frame from the video
+      logMessage("Capturing current camera frame to canvas...", "info");
       const canvas = document.createElement("canvas");
       canvas.width = 640;
       canvas.height = 480;
@@ -274,6 +311,7 @@ export function App() {
       if (!blob) throw new Error("Could not compress frame to JPEG");
 
       // 5. Upload enrollment face asset
+      logMessage("API Call: Uploading and committing face asset...", "info");
       const formData = new FormData();
       formData.append("files", blob, "enrollment.jpg");
       formData.append("policy_version", "1.0");
@@ -290,12 +328,14 @@ export function App() {
         const errData = await uploadRes.json().catch(() => ({}));
         throw new Error(errData.error?.message || `Upload failed: HTTP ${uploadRes.status}`);
       }
+      logMessage(`Face asset uploaded and committed successfully for ${person.display_name}!`, "info");
 
       playBeep(880, "sine", 0.12);
       setTimeout(() => playBeep(1320, "sine", 0.15), 80);
       setEnrollSuccess(`Face registered successfully for ${person.display_name}!`);
       setEnrollName("");
     } catch (err: any) {
+      logMessage(`Enrollment failed: ${err.message || err}`, "error");
       playBeep(220, "triangle", 0.35);
       setEnrollError(err.message || "Failed to complete face enrollment");
     } finally {
@@ -495,6 +535,39 @@ export function App() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Real-time Logs Console */}
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg flex flex-col h-80">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-300">Live Connection Logs</h2>
+                <button
+                  onClick={() => setLogs([])}
+                  className="text-[10px] text-zinc-400 hover:text-cyan-300 bg-white/5 px-2.5 py-1 rounded-md border border-white/5 transition-all"
+                >
+                  Clear Logs
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto font-mono text-[10px] text-zinc-300 space-y-1.5 p-3 rounded-xl bg-zinc-950/70 border border-white/5 select-text scrollbar-thin">
+                {logs.length === 0 ? (
+                  <p className="text-zinc-500 italic">No logs recorded yet.</p>
+                ) : (
+                  logs.map((log, idx) => (
+                    <div
+                      key={idx}
+                      className={
+                        log.includes("ERROR:") || log.includes("failed") || log.includes("closed")
+                          ? "text-red-400"
+                          : log.includes("success") || log.includes("Success") || log.includes("opened")
+                          ? "text-emerald-400"
+                          : "text-zinc-300"
+                      }
+                    >
+                      {log}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             {/* Quickstart Reference Box */}

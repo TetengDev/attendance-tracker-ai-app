@@ -47,3 +47,6 @@ pgdata/
 .DS_Store
 .idea/
 *.swp
+
+# Local logging
+logs/
