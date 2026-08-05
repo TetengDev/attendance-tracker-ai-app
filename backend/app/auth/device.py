@@ -55,7 +55,6 @@ def verify_pairing_code(code: str, code_hash: str) -> bool:
 
 def issue_device_jwt(
     device_id: UUID,
-    raw_token: str,
     secret_key: str,
     expiry_minutes: int = 15,
 ) -> str:
@@ -63,7 +62,6 @@ def issue_device_jwt(
     now = datetime.now(tz=UTC)
     payload = {
         "sub": str(device_id),
-        "token": raw_token,
         "exp": int((now + timedelta(minutes=expiry_minutes)).timestamp()),
         "type": "scan_session",
     }

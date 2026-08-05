@@ -441,3 +441,13 @@ paths = [
   "docs/ownership.toml",
 ]
 
+[[ownership]]
+issue = "TEN-188"
+paths = [
+  "backend/app/auth/device.py",
+  "backend/app/api/device_pairing.py",
+  "backend/app/api/ws_scan.py",
+  "backend/tests/test_device_auth.py",
+  "docs/ownership.toml",
+]
+

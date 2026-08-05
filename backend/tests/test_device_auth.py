@@ -246,7 +246,7 @@ class TestDeviceTokenRefresh:
         secret_key = get_test_secret_key()
         claims = jwt.decode(data["device_token_jwt"], secret_key, algorithms=["HS256"])
         assert claims["sub"] == str(DEVICE_ID)
-        assert claims["token"] == RAW_TOKEN
+        assert "token" not in claims
         assert claims["type"] == "scan_session"
         assert claims["exp"] > int(datetime.now(tz=UTC).timestamp())
 
@@ -277,7 +277,7 @@ class TestWebSocketSecurity:
         mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
 
         secret_key = get_test_secret_key()
-        jwt_token = issue_device_jwt(DEVICE_ID, RAW_TOKEN, secret_key)
+        jwt_token = issue_device_jwt(DEVICE_ID, secret_key)
 
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
@@ -294,7 +294,7 @@ class TestWebSocketSecurity:
     def test_handshake_blocks_revoked_device(self, client: TestClient) -> None:
         global_revocation_registry.revoke(DEVICE_ID)
         secret_key = get_test_secret_key()
-        jwt_token = issue_device_jwt(DEVICE_ID, RAW_TOKEN, secret_key)
+        jwt_token = issue_device_jwt(DEVICE_ID, secret_key)
         try:
             with client.websocket_connect("/api/kiosk/ws") as ws:
                 ws.send_json(
@@ -312,7 +312,7 @@ class TestWebSocketSecurity:
 
     def test_heartbeat_disconnects_revoked_device(self, client: TestClient) -> None:
         secret_key = get_test_secret_key()
-        jwt_token = issue_device_jwt(DEVICE_ID, RAW_TOKEN, secret_key)
+        jwt_token = issue_device_jwt(DEVICE_ID, secret_key)
 
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
@@ -345,11 +345,11 @@ class TestWebSocketSecurity:
             finally:
                 global_revocation_registry.reset()
 
-    def test_reconnect_after_heartbeat_rotation_fails_with_old_jwt(
+    def test_reconnect_after_heartbeat_rotation_succeeds_with_valid_jwt(
         self, client: TestClient, mock_session: MockSession
     ) -> None:
         secret_key = get_test_secret_key()
-        jwt_token = issue_device_jwt(DEVICE_ID, RAW_TOKEN, secret_key)
+        jwt_token = issue_device_jwt(DEVICE_ID, secret_key)
 
         # 1. Connect and perform a heartbeat to trigger token rotation
         with client.websocket_connect("/api/kiosk/ws") as ws:
@@ -378,8 +378,8 @@ class TestWebSocketSecurity:
             assert rotated_token != RAW_TOKEN
 
         # Now, the DB has the hash of rotated_token.
-        # 2. Try to reconnect using the SAME jwt_token (which contains RAW_TOKEN).
-        # This will fail the HMAC check in the hello handshake!
+        # 2. Reconnect using the SAME jwt_token (which doesn't contain RAW_TOKEN).
+        # This should succeed because signature verification alone is cryptographically sufficient!
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
                 {
@@ -388,9 +388,10 @@ class TestWebSocketSecurity:
                     "app_version": "1.0.0",
                 }
             )
-            err = ws.receive_json()
-            assert err["type"] == "error"
-            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+            push = ws.receive_json()
+            assert push["type"] == "settings_push"
 
 
 def test_is_ip_allowed() -> None:

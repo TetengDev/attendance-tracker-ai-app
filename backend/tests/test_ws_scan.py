@@ -63,8 +63,8 @@ SESSION_ID = UUID("44444444-4444-4444-4444-444444444444")
 RAW_TOKEN = "secret-device-token"
 
 
-def _make_jwt(device_id: UUID = DEVICE_ID, token: str = RAW_TOKEN) -> str:
-    return jwt.encode({"sub": str(device_id), "token": token, "type": "scan_session"}, SECRET_KEY, algorithm="HS256")
+def _make_jwt(device_id: UUID = DEVICE_ID) -> str:
+    return jwt.encode({"sub": str(device_id), "type": "scan_session"}, SECRET_KEY, algorithm="HS256")
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
-    def test_handshake_revoked_device(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_succeeds_with_valid_jwt_even_if_token_hash_rotated(self, client: TestClient, mock_session: MockSession) -> None:
         mock_session.device.token_hash = hash_admin_password("another-token")
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
@@ -254,9 +254,8 @@ class TestWebSocketHandshake:
                     "app_version": "1.0.0",
                 }
             )
-            err = ws.receive_json()
-            assert err["type"] == "error"
-            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
 
     def test_handshake_fixed_device_missing_location(self, client: TestClient, mock_session: MockSession) -> None:
         mock_session.device.__dict__["location_id"] = None

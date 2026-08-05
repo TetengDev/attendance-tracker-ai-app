@@ -41,7 +41,6 @@ from backend.app.auth.device import (
     global_revocation_registry,
     hash_device_token,
     is_ip_allowed,
-    verify_device_token,
 )
 from backend.app.config import get_settings
 from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
@@ -202,7 +201,6 @@ async def kiosk_websocket_endpoint(
             jwt_secret_val = settings.jwt_secret.get_secret_value()
             claims = decode_device_jwt(hello.device_token_jwt, jwt_secret_val)
             device_id = UUID(claims["sub"])
-            raw_token = claims["token"]
         except (jwt.InvalidTokenError, KeyError, ValueError) as exc:
             await websocket.send_json(
                 ErrorMessage(
@@ -218,30 +216,27 @@ async def kiosk_websocket_endpoint(
 
         # Fetch and verify device
         device = await session.get(Device, device_id)
+        if device is None:
+            await websocket.send_json(
+                ErrorMessage(
+                    type=ServerMessageType.ERROR,
+                    error=ErrorBody(
+                        code=ErrorCode.DEVICE_REVOKED,
+                        message="Device not found",
+                    ),
+                ).model_dump(mode="json")
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
         
         # Check revocation status
-        if device is not None and global_revocation_registry.is_revoked(device.id):
+        if global_revocation_registry.is_revoked(device.id):
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
                     error=ErrorBody(
                         code=ErrorCode.DEVICE_REVOKED,
                         message="Device revoked",
-                    ),
-                ).model_dump(mode="json")
-            )
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
-
-        # Verify device token using HMAC
-        key = get_device_token_key(settings.biometric_kek.get_secret_value())
-        if device is None or not verify_device_token(raw_token, device.token_hash, key):
-            await websocket.send_json(
-                ErrorMessage(
-                    type=ServerMessageType.ERROR,
-                    error=ErrorBody(
-                        code=ErrorCode.DEVICE_REVOKED,
-                        message="Device revoked or invalid token credentials",
                     ),
                 ).model_dump(mode="json")
             )
