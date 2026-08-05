@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -31,7 +32,12 @@ def setup_file_logging() -> None:
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
     log_file = logs_dir / "app.log"
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=3,
+        encoding="utf-8"
+    )
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
@@ -40,7 +46,7 @@ def setup_file_logging() -> None:
     file_handler.setLevel(logging.INFO)
 
     root_logger = logging.getLogger()
-    if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
+    if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
         root_logger.addHandler(file_handler)
         if root_logger.level > logging.INFO:
             root_logger.setLevel(logging.INFO)
@@ -51,6 +57,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_file_logging()
     get_settings()
     yield
+
+
+class KioskLogPayload(BaseModel):
+    message: str
 
 
 def create_app() -> FastAPI:
@@ -65,6 +75,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(AuditMiddleware)
+
+    @app.post("/api/kiosk/logs", status_code=204)
+    async def log_kiosk_message(payload: KioskLogPayload) -> None:
+        # Limit message size and sanitize to prevent log injection
+        sanitized = payload.message[:500].replace("\n", "\\n").replace("\r", "\\r")
+        logger.info(f"[CLIENT] {sanitized}")
+
     app.include_router(health_router)
     app.include_router(people_router)
     app.include_router(people_merge_router)
@@ -81,12 +98,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-
-class KioskLogPayload(BaseModel):
-    message: str
-
-
-@app.post("/api/kiosk/logs", status_code=204)
-async def log_kiosk_message(payload: KioskLogPayload) -> None:
-    logger.info(f"[CLIENT] {payload.message}")

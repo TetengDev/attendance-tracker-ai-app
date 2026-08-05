@@ -143,7 +143,7 @@ export function App() {
         } else if (msg.type === "result") {
           const result = msg as Result;
           if (result.status === "match" && result.person) {
-            logMessage(`Match result: ${result.person.display_name}`, "info");
+            logMessage(`Match result: face matched successfully (UUID: ${result.person.id})`, "info");
             playBeep(880, "sine", 0.12);
             setTimeout(() => playBeep(1100, "sine", 0.15), 80);
             setScanResult(result);
@@ -235,7 +235,7 @@ export function App() {
     setIsEnrolling(true);
     setEnrollSuccess(null);
     setEnrollError(null);
-    logMessage(`Starting face enrollment for: "${enrollName.trim()}"`, "info");
+    logMessage("Starting face enrollment", "info");
 
     try {
       // 1. Create a person record
@@ -328,7 +328,7 @@ export function App() {
         const errData = await uploadRes.json().catch(() => ({}));
         throw new Error(errData.error?.message || `Upload failed: HTTP ${uploadRes.status}`);
       }
-      logMessage(`Face asset uploaded and committed successfully for ${person.display_name}!`, "info");
+      logMessage(`Face asset uploaded and committed successfully for UUID ${person.id}!`, "info");
 
       playBeep(880, "sine", 0.12);
       setTimeout(() => playBeep(1320, "sine", 0.15), 80);
