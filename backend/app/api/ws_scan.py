@@ -168,7 +168,15 @@ from backend.app.api.enrollment import get_face_engine, get_gallery_index
 
 
 def get_client_ip(websocket: WebSocket) -> str:
-    """Resolve client IP address, supporting X-Forwarded-For for reverse proxies."""
+    """Resolve client IP address, supporting proxy headers securely.
+
+    Checks X-Real-IP first as reverse proxies (e.g. Caddy/Nginx) always overwrite it,
+    preventing client-side header spoofing. Falls back to X-Forwarded-For.
+    """
+    real_ip = websocket.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
     forwarded_for = websocket.headers.get("x-forwarded-for")
     if forwarded_for:
         # X-Forwarded-For can contain a list of proxy IPs; leftmost is original client
