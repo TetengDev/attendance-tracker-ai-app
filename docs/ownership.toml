@@ -460,6 +460,7 @@ paths = [
   "backend/app/main.py",
   "backend/app/api/ws_scan.py",
   "backend/tests/test_ws_scan.py",
+  "backend/tests/test_cors.py",
   "docs/ownership.toml",
 ]
 
