@@ -271,6 +271,72 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
+    def test_handshake_blocks_non_allowed_cidr_by_x_forwarded_for(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
+        with client.websocket_connect(
+            "/api/kiosk/ws",
+            headers={"x-forwarded-for": "192.168.1.2"}
+        ) as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+
+    def test_handshake_allows_allowed_cidr_by_x_forwarded_for(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.device.allowed_cidrs = ["192.168.1.0/24"]
+        with client.websocket_connect(
+            "/api/kiosk/ws",
+            headers={"x-forwarded-for": "192.168.1.5, 10.0.0.1"}
+        ) as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+
+    def test_handshake_blocks_non_allowed_cidr_by_x_real_ip(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
+        with client.websocket_connect(
+            "/api/kiosk/ws",
+            headers={"x-real-ip": "192.168.1.2"}
+        ) as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
+
+    def test_handshake_allows_allowed_cidr_by_x_real_ip(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.device.allowed_cidrs = ["192.168.1.0/24"]
+        with client.websocket_connect(
+            "/api/kiosk/ws",
+            headers={"x-real-ip": "192.168.1.5"}
+        ) as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+
 
 class TestWebSocketHeartbeat:
     def test_heartbeat_logged(self, client: TestClient, mock_session: MockSession) -> None:
