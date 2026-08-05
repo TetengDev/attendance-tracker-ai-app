@@ -455,6 +455,8 @@ paths = [
 [[ownership]]
 issue = "TEN-189"
 paths = [
+  "backend/app/__init__.py",
+  "backend/app/config.py",
   "backend/app/api/ws_scan.py",
   "backend/tests/test_ws_scan.py",
   "docs/ownership.toml",
