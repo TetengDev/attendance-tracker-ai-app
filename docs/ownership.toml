@@ -458,9 +458,13 @@ paths = [
   "backend/app/__init__.py",
   "backend/app/config.py",
   "backend/app/main.py",
+  "backend/app/cli/seed.py",
   "backend/app/api/ws_scan.py",
   "backend/tests/test_ws_scan.py",
   "backend/tests/test_cors.py",
   "docs/ownership.toml",
+  "pyproject.toml",
+  "uv.lock",
+  "frontend/apps/kiosk/src/App.tsx",
 ]
 
