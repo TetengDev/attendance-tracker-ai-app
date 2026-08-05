@@ -6,8 +6,10 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from backend.app.auth.device import get_device_token_key, hash_device_token
 from backend.app.auth.passwords import hash_admin_password
 from backend.app.auth.totp import generate_totp_secret
+from backend.app.config import get_settings
 from backend.app.db.session import get_session_factory
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.devices import (
@@ -49,6 +51,10 @@ async def seed() -> None:
             session.add(location)
             await session.flush()
 
+        settings = get_settings()
+        key = get_device_token_key(settings.biometric_kek.get_secret_value())
+        token_hash = hash_device_token("seed-device-token", key)
+
         device = (
             await session.execute(
                 select(Device).where(Device.token_display_prefix == SEED_DEVICE_PREFIX)
@@ -61,12 +67,14 @@ async def seed() -> None:
                     mode=DeviceMode.FIXED,
                     form_factor=DeviceFormFactor.TABLET,
                     direction=DeviceDirection.BIDIRECTIONAL,
-                    token_hash=hash_admin_password("seed-device-token"),
+                    token_hash=token_hash,
                     token_display_prefix=SEED_DEVICE_PREFIX,
                     allowed_cidrs=["127.0.0.1/32"],
                     settings_override={},
                 )
             )
+        else:
+            device.token_hash = token_hash
 
 
 def main() -> None:
