@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from backend.app.api.consents import router as consents_router
 from backend.app.api.device_pairing import router as device_pairing_router
@@ -21,9 +24,31 @@ from backend.app.api.ws_scan import router as ws_scan_router
 from backend.app.audit.middleware import AuditMiddleware
 from backend.app.config import get_settings
 
+logger = logging.getLogger("attendance_tracker")
+
+
+def setup_file_logging() -> None:
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    log_file = logs_dir / "app.log"
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+
+    root_logger = logging.getLogger()
+    if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
+        root_logger.addHandler(file_handler)
+        if root_logger.level > logging.INFO:
+            root_logger.setLevel(logging.INFO)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    setup_file_logging()
     get_settings()
     yield
 
@@ -56,3 +81,12 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+class KioskLogPayload(BaseModel):
+    message: str
+
+
+@app.post("/api/kiosk/logs", status_code=204)
+async def log_kiosk_message(payload: KioskLogPayload) -> None:
+    logger.info(f"[CLIENT] {payload.message}")

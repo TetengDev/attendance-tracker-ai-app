@@ -466,5 +466,6 @@ paths = [
   "pyproject.toml",
   "uv.lock",
   "frontend/apps/kiosk/src/App.tsx",
+  ".gitignore",
 ]
 
