@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import os
+import sys
 from functools import lru_cache
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_env_file = None if ("pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ) else ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment and optional .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_file,
         env_file_encoding="utf-8",
         extra="ignore",
     )
