@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScanLoop } from "./scan/useScanLoop";
 import { apiBaseUrl } from "@attendance/api-client";
-import type { FrameBurst, ServerMessage, Result, ErrorMessage } from "@attendance/protocol";
+import type { FrameBurst, ServerMessage, Result, ErrorMessage, TokenRotation } from "@attendance/protocol";
 
 // Configuration for local dev seed device
 const SEED_DEVICE_ID = "ee2872c4-f685-4843-b64d-8b29edfd086a";
@@ -32,13 +32,35 @@ export function App() {
   
   // App state
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
+  const [deviceTokenValue, setDeviceTokenValue] = useState<string>(() => {
+    return localStorage.getItem("aegis_device_token") || SEED_DEVICE_TOKEN;
+  });
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   const [wsError, setWsError] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState(true);
-  const [showEnroll, setShowEnroll] = useState(false);
+  const [showEnroll, setShowEnroll] = useState(() => {
+    try {
+      return localStorage.getItem('aegis_show_enroll') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Persist showEnroll to localStorage so mode survives reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem('aegis_show_enroll', showEnroll ? '1' : '0');
+    } catch (e) {
+      // ignore
+    }
+  }, [showEnroll]);
   const [gatingStatus, setGatingStatus] = useState<string | null>("Initialize camera feed...");
   const [scanResult, setScanResult] = useState<Result | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [isMatching, setIsMatching] = useState(false);
+  const [relaxedGating, setRelaxedGating] = useState(true);
+
+  const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
 
   // Enrollment state
   const [enrollName, setEnrollName] = useState("");
@@ -66,10 +88,70 @@ export function App() {
     }).catch((err) => console.error("Client log upload failed:", err));
   }, []);
 
+  // Fetch registered people
+  const fetchPeople = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/people`, {
+        headers: {
+          "x-admin-id": SEED_ADMIN_ID,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPeople(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch registered people:", err);
+    }
+  }, []);
+
+  // Delete specific registration
+  const deletePerson = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete the registration for ${name}?`)) return;
+    try {
+      logMessage(`Deleting registration for ${name}...`, "info");
+      const res = await fetch(`${apiBaseUrl}/api/people/${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-id": SEED_ADMIN_ID,
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`Delete failed: HTTP ${res.status}`);
+      }
+      logMessage(`Registration for ${name} successfully deleted.`, "info");
+      fetchPeople();
+    } catch (err: any) {
+      logMessage(`Delete failed: ${err.message || err}`, "error");
+    }
+  };
+
+  // Delete all registrations
+  const deleteAllPeople = async () => {
+    if (!confirm("Are you sure you want to delete ALL registrations? This will also clear all attendance records and logs.")) return;
+    try {
+      logMessage("Deleting all registrations...", "info");
+      const res = await fetch(`${apiBaseUrl}/api/people`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-id": SEED_ADMIN_ID,
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`Delete all failed: HTTP ${res.status}`);
+      }
+      logMessage("All registrations and attendance events deleted successfully.", "info");
+      fetchPeople();
+    } catch (err: any) {
+      logMessage(`Delete all failed: ${err.message || err}`, "error");
+    }
+  };
+
   // Fetch device JWT token
   const fetchToken = async () => {
     try {
-      logMessage("Exchanging seed device credentials for JWT scan token...", "info");
+      const currentToken = localStorage.getItem("aegis_device_token") || SEED_DEVICE_TOKEN;
+      logMessage(`Exchanging device credentials (prefix: ${currentToken.slice(0, 6)}...) for JWT scan token...`, "info");
       setWsStatus("connecting");
       setWsError(null);
       const res = await fetch(`${apiBaseUrl}/api/kiosk/token`, {
@@ -77,10 +159,15 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           device_id: SEED_DEVICE_ID,
-          device_token: SEED_DEVICE_TOKEN,
+          device_token: currentToken,
         }),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          logMessage("Device token invalid (401). Resetting cache to seed token.", "error");
+          localStorage.removeItem("aegis_device_token");
+          setDeviceTokenValue(SEED_DEVICE_TOKEN);
+        }
         throw new Error(`Token exchange failed: HTTP ${res.status}`);
       }
       const data = await res.json();
@@ -138,12 +225,15 @@ export function App() {
         if (msg.type === "ready") {
           logMessage("WebSocket handshake success: ready for scans.", "info");
           setGatingStatus("Ready for face scan");
+          setIsMatching(false);
         } else if (msg.type === "checking") {
           setGatingStatus("Matching embedding...");
+          setIsMatching(true);
         } else if (msg.type === "result") {
+          setIsMatching(false);
           const result = msg as Result;
           if (result.status === "match" && result.person) {
-            logMessage(`Match result: ${result.person.display_name}`, "info");
+            logMessage(`Match result: face matched successfully (UUID: ${result.person.id})`, "info");
             playBeep(880, "sine", 0.12);
             setTimeout(() => playBeep(1100, "sine", 0.15), 80);
             setScanResult(result);
@@ -153,14 +243,23 @@ export function App() {
           } else {
             logMessage("Match result: unknown face (no match)", "error");
             playBeep(220, "triangle", 0.35);
-            setScanError("Face not recognized");
+            setScanError("Face not recognized. Please enroll first.");
             setTimeout(() => setScanError(null), 3000);
           }
+        } else if (msg.type === "token_rotation") {
+          const rotation = msg as TokenRotation;
+          logMessage(`Device token rotated by server. Updating cached credentials.`, "info");
+          localStorage.setItem("aegis_device_token", rotation.device_token);
+          setDeviceTokenValue(rotation.device_token);
         } else if (msg.type === "error") {
+          setIsMatching(false);
           const err = msg as ErrorMessage;
-          logMessage(`Scan error event received: ${err.error.message}`, "error");
+          logMessage(`Scan error event received: ${err.error.message} (code: ${err.error.code})`, "error");
+          if (err.error.details) {
+            logMessage(`Error Details: ${JSON.stringify(err.error.details)}`, "error");
+          }
           playBeep(220, "triangle", 0.35);
-          setScanError(err.error.message);
+          setScanError(getFriendlyErrorMessage(err.error.code, err.error.message));
           setTimeout(() => setScanError(null), 3000);
         }
       } catch (err) {
@@ -171,6 +270,7 @@ export function App() {
     ws.onclose = (event) => {
       logMessage(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "None"}`, "error");
       setWsStatus("disconnected");
+      setIsMatching(false);
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
@@ -179,6 +279,7 @@ export function App() {
     ws.onerror = (err) => {
       logMessage("WebSocket interface error encountered", "error");
       setWsStatus("disconnected");
+      setIsMatching(false);
     };
 
     return () => {
@@ -190,10 +291,16 @@ export function App() {
     };
   }, [deviceToken, logMessage]);
 
+  // Load registered people on mount and connection status change
+  useEffect(() => {
+    fetchPeople();
+  }, [fetchPeople, wsStatus]);
+
   // Frame gating callbacks
   const handleBurstCaptured = useCallback((burst: FrameBurst) => {
     logMessage(`Gating rules passed. Submitting burst: ${burst.idempotency_key} (${burst.frames.length} frames)`, "info");
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      setIsMatching(true);
       wsRef.current.send(JSON.stringify(burst));
     } else {
       logMessage("WebSocket not open. Dropped burst submission.", "error");
@@ -217,12 +324,28 @@ export function App() {
     }
   }, []);
 
+  // Memoize relaxed gating settings for webcam-friendly dev testing
+  const scanSettings = useMemo(() => {
+    if (relaxedGating) {
+      return {
+        min_bbox_area_pct: 3.5,
+        min_interocular_px: 45,
+        min_sharpness: 10.0,
+        stability_iou: 0.75,
+        luma_min: 15,
+        luma_max: 245,
+      };
+    }
+    return {};
+  }, [relaxedGating]);
+
   // Initialize scan loop hook
-  const { isLoadingModel, isScanRunning, resetLockout } = useScanLoop({
+  const { isLoadingModel, isScanRunning, resetLockout, detectedBbox, reason, metrics } = useScanLoop({
     videoRef,
     isScanActive: activeScan && wsStatus === "connected" && !scanResult && !showEnroll,
     facingMode: "user",
     scanMode: "continuous",
+    settings: scanSettings,
     onBurstCaptured: handleBurstCaptured,
     onGatingFailed: handleGatingFailed,
     onGatingPassed: () => setGatingStatus("Perfect! Checking face..."),
@@ -232,10 +355,19 @@ export function App() {
   // Local Dev Enrollment Functionality
   const enrollFace = async () => {
     if (!enrollName.trim() || !videoRef.current) return;
+
+    const normalizedName = enrollName.trim().toLowerCase();
+    if (people.some((p) => p.display_name.trim().toLowerCase() === normalizedName)) {
+      setEnrollError(`A profile with the name "${enrollName.trim()}" already exists. Please delete the existing profile or use a different name.`);
+      return;
+    }
+
     setIsEnrolling(true);
     setEnrollSuccess(null);
     setEnrollError(null);
-    logMessage(`Starting face enrollment for: "${enrollName.trim()}"`, "info");
+    logMessage("Starting face enrollment", "info");
+
+    let createdPersonId: string | null = null;
 
     try {
       // 1. Create a person record
@@ -255,6 +387,7 @@ export function App() {
         throw new Error(`Failed to create person: HTTP ${personRes.status}`);
       }
       const person = await personRes.json();
+      createdPersonId = person.id;
       logMessage(`Person record created: UUID ${person.id}`, "info");
 
       // 2. Submit consent
@@ -328,18 +461,113 @@ export function App() {
         const errData = await uploadRes.json().catch(() => ({}));
         throw new Error(errData.error?.message || `Upload failed: HTTP ${uploadRes.status}`);
       }
-      logMessage(`Face asset uploaded and committed successfully for ${person.display_name}!`, "info");
+      const data = await uploadRes.json();
+      if (data.accepted_count === 0) {
+        const firstRejection = data.results?.find((r: any) => r.status === "rejected");
+        const errMsg = firstRejection?.rejection_message || "Face image was rejected by quality gates.";
+        throw new Error(errMsg);
+      }
+      logMessage(`Face asset uploaded and committed successfully for UUID ${person.id}!`, "info");
 
       playBeep(880, "sine", 0.12);
       setTimeout(() => playBeep(1320, "sine", 0.15), 80);
       setEnrollSuccess(`Face registered successfully for ${person.display_name}!`);
       setEnrollName("");
+      fetchPeople();
+
+      // Auto-close enrollment panel after 3 seconds and guide user to scan mode
+      setTimeout(() => {
+        setShowEnroll(false);
+        setEnrollSuccess(null);
+        logMessage("Ready for attendance checks. Stand in front of the camera.", "info");
+      }, 3000);
     } catch (err: any) {
       logMessage(`Enrollment failed: ${err.message || err}`, "error");
+
+      // Cleanup orphaned/incomplete person profile
+      if (createdPersonId) {
+        logMessage(`Cleaning up incomplete/orphaned person record: ${createdPersonId}...`, "info");
+        try {
+          await fetch(`${apiBaseUrl}/api/people/${createdPersonId}`, {
+            method: "DELETE",
+            headers: {
+              "x-admin-id": SEED_ADMIN_ID,
+            },
+          });
+          logMessage("Incomplete person record successfully cleaned up.", "info");
+          fetchPeople();
+        } catch (cleanupErr) {
+          console.error("Failed to clean up incomplete person record:", cleanupErr);
+        }
+      }
+
       playBeep(220, "triangle", 0.35);
       setEnrollError(err.message || "Failed to complete face enrollment");
     } finally {
       setIsEnrolling(false);
+    }
+  };
+
+  const getGatingInstruction = (): string => {
+    if (!reason) return "";
+    if (reason.includes("bbox_area_too_small") || reason.includes("interocular_too_small")) {
+      return "Too Far - Move Closer";
+    }
+    if (reason.includes("not_centered")) {
+      return "Center Your Face";
+    }
+    if (reason.includes("blurry")) {
+      return "Hold Still - Focusing";
+    }
+    if (reason.includes("invalid_luma") && metrics) {
+      const minLuma = relaxedGating ? 15 : 40;
+      const maxLuma = relaxedGating ? 245 : 220;
+      if (metrics.luma < minLuma) {
+        return "Too Dark - Need Light";
+      }
+      if (metrics.luma > maxLuma) {
+        return "Too Bright / Glare";
+      }
+      return "Check Lighting";
+    }
+    if (reason.includes("multiple_faces")) {
+      return "Ensure One Face Only";
+    }
+    return "Aligning Face...";
+  };
+
+  const getFriendlyErrorMessage = (code: string, rawMessage: string): string => {
+    switch (code) {
+      case "NO_FACE":
+        return "No face detected. Please step in front of the camera.";
+      case "MULTIPLE_FACES":
+        return "Multiple faces detected. Please make sure only one person is in the frame.";
+      case "FACE_TOO_SMALL":
+        return "Please move closer to the camera.";
+      case "LOW_QUALITY":
+        return "Image is blurry or too dark. Please hold still and check lighting.";
+      case "LIVENESS_FAILED":
+        return "Verification failed. Please look directly at the camera.";
+      case "AMBIGUOUS":
+      case "LOW_CONFIDENCE":
+        return "Scan was not clear enough. Please try again.";
+      case "UNKNOWN_FACE":
+        return "Face not recognized. Please register first.";
+      case "COOLDOWN_ACTIVE":
+        return "Already scanned recently. Please wait a moment.";
+      case "RATE_LIMITED":
+        return "Too many scan attempts. Please wait a few seconds.";
+      case "LOCATION_CONFLICT":
+        return "Location conflict. Please scan at your designated kiosk.";
+      case "DEVICE_REVOKED":
+        return "Kiosk authorization revoked. Please contact administrator.";
+      case "SCAN_BACKEND_UNAVAILABLE":
+        if (rawMessage.includes("implicit open scan session")) {
+          return "Session initialized. Please try scanning now.";
+        }
+        return "System temporarily unavailable. Please try again.";
+      default:
+        return "Face scan failed. Please try again.";
     }
   };
 
@@ -374,12 +602,49 @@ export function App() {
               </>
             )}
           </div>
+
+          {/* Mode Badge + Toggle - always visible so users know current mode */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const enteringEnroll = !showEnroll;
+                setShowEnroll(enteringEnroll);
+                setEnrollSuccess(null);
+                setEnrollError(null);
+                // When entering enrollment mode, pause scanning; when leaving, resume scanning
+                setActiveScan(!enteringEnroll);
+              }}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors border ${showEnroll ? "bg-amber-500 text-zinc-950 border-amber-600" : "bg-emerald-500 text-zinc-950 border-emerald-600"}`}
+              title={showEnroll ? "Click to switch to Scan Mode" : "Click to switch to Registration Mode"}
+            >
+              {showEnroll ? "Registration Mode" : "Scan Mode"}
+            </button>
+          </div>
+
           {wsStatus === "disconnected" && (
             <button
               onClick={fetchToken}
               className="rounded-full bg-cyan-500 px-4 py-1 text-xs font-semibold text-zinc-950 hover:bg-cyan-400 transition-colors shadow-lg shadow-cyan-500/20"
             >
               Connect Kiosk
+            </button>
+          )}
+
+          {/* Explicit Start/Stop Scan control visible when connected */}
+          {wsStatus === 'connected' && (
+            <button
+              onClick={() => {
+                if (activeScan) {
+                  setActiveScan(false);
+                } else {
+                  setActiveScan(true);
+                  // ensure not in enroll mode
+                  setShowEnroll(false);
+                }
+              }}
+              className={`ml-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors border ${activeScan ? 'bg-red-500 text-white border-red-600' : 'bg-emerald-500 text-zinc-950 border-emerald-600'}`}
+            >
+              {activeScan ? 'Stop Scanning' : 'Start Scanning'}
             </button>
           )}
         </div>
@@ -409,6 +674,90 @@ export function App() {
                 <div className="h-56 w-56 rounded-full border-2 border-dashed border-cyan-400/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
                   <div className="h-48 w-48 rounded-full border border-cyan-400/20" />
                 </div>
+              </div>
+            )}
+
+            {/* Enrollment Guide Overlay */}
+            {isScanRunning && showEnroll && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/10">
+                {/* Face Silhouette Guide */}
+                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-cyan-400 shadow-[0_0_15px_#22d3ee] flex items-center justify-center animate-[pulse_2s_infinite]">
+                  <div className="h-56 w-40 rounded-[100px] border border-cyan-400/30" />
+                </div>
+                {/* Text guide */}
+                <div className="absolute bottom-6 bg-cyan-950/95 border border-cyan-500/30 rounded-full px-4 py-1.5 text-xs text-cyan-200 font-semibold tracking-wide shadow-lg backdrop-blur-sm">
+                  Position your face in the silhouette and click "Capture & Register"
+                </div>
+              </div>
+            )}
+
+            {/* Disconnected Overlay */}
+            {wsStatus !== "connected" && !isLoadingModel && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm z-10">
+                <svg className="h-12 w-12 text-zinc-500 mb-3 animate-[pulse_2s_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 8.464M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
+                </svg>
+                <p className="text-zinc-300 text-sm font-semibold tracking-wide mb-1">Kiosk Offline</p>
+                <p className="text-zinc-500 text-xs">Click "Connect Kiosk" in the header to start scanning</p>
+              </div>
+            )}
+
+            {/* Scan Mode Active Indicator */}
+            {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
+              <div className="absolute top-4 left-4 bg-zinc-950/85 border border-cyan-500/30 rounded-full px-3 py-1 text-[10px] text-cyan-400 font-semibold tracking-wider uppercase backdrop-blur-sm z-10 flex items-center gap-1.5 shadow-lg shadow-cyan-500/10">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Kiosk Scan Mode Active</span>
+              </div>
+            )}
+
+            {/* Real-time Bounding Box Overlay */}
+            {isScanRunning && wsStatus === "connected" && !scanResult && detectedBbox && (
+              <div
+                style={{
+                  left: `${100 - detectedBbox.x - detectedBbox.w}%`,
+                  top: `${detectedBbox.y}%`,
+                  width: `${detectedBbox.w}%`,
+                  height: `${detectedBbox.h}%`,
+                }}
+                className={`absolute border-2 rounded-2xl transition-all duration-75 pointer-events-none ${
+                  showEnroll 
+                    ? "border-cyan-400 shadow-[0_0_8px_#22d3ee]" 
+                    : reason 
+                    ? "border-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" 
+                    : "border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                }`}
+              >
+                <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-[10px] font-semibold text-zinc-950 uppercase tracking-wider backdrop-blur-sm whitespace-nowrap ${
+                  showEnroll 
+                    ? "bg-cyan-400" 
+                    : reason 
+                    ? "bg-amber-400" 
+                    : "bg-emerald-400"
+                }`}>
+                  {showEnroll 
+                    ? "Enrolling..." 
+                    : reason 
+                    ? getGatingInstruction() 
+                    : "Stable - Scanning..."}
+                </div>
+              </div>
+            )}
+
+            {/* Analyzing Overlay */}
+            {isMatching && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/60 backdrop-blur-[2px] z-10 animate-fade-in">
+                <div className="relative h-28 w-28 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+                  <svg className="h-10 w-10 text-cyan-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <p className="text-cyan-300 text-sm font-semibold tracking-wider uppercase mt-4 animate-pulse">
+                  Analyzing Biometrics
+                </p>
+                <p className="text-zinc-400 text-xs mt-1">
+                  Matching face against gallery...
+                </p>
               </div>
             )}
 
@@ -479,6 +828,26 @@ export function App() {
                 Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
               </p>
 
+              {/* Relax scan criteria toggle */}
+              <div className="flex items-center justify-between bg-zinc-900/40 border border-white/5 rounded-2xl px-4 py-3 mb-4 select-none">
+                <div className="flex flex-col gap-0.5 pr-2">
+                  <span className="text-xs font-semibold text-zinc-300">Relax Scan Criteria</span>
+                  <span className="text-[10px] text-zinc-500 leading-tight">Bypasses strict distance/lighting gates for easy local webcam testing</span>
+                </div>
+                <button
+                  onClick={() => setRelaxedGating(!relaxedGating)}
+                  className={`relative inline-flex h-5.5 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                    relaxedGating ? "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.3)]" : "bg-zinc-800"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4.5 w-4.5 transform rounded-full bg-zinc-950 transition-transform duration-200 ${
+                      relaxedGating ? "translate-x-5" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
               <button
                 onClick={() => {
                   setShowEnroll(!showEnroll);
@@ -535,6 +904,47 @@ export function App() {
                   )}
                 </div>
               )}
+
+              {/* List of current registrations */}
+              <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-semibold text-zinc-400 uppercase">
+                    Registered Profiles ({people.length})
+                  </h3>
+                  {people.length > 0 && (
+                    <button
+                      onClick={deleteAllPeople}
+                      className="text-[10px] text-red-400 hover:text-red-300 font-semibold transition-colors bg-red-500/10 hover:bg-red-500/20 px-2 py-0.5 rounded"
+                    >
+                      Delete All
+                    </button>
+                  )}
+                </div>
+
+                {people.length === 0 ? (
+                  <p className="text-[11px] text-zinc-500 italic">No face profiles registered yet.</p>
+                ) : (
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
+                    {people.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2 text-xs hover:border-white/10 transition-colors"
+                      >
+                        <span className="font-medium truncate text-zinc-300">{p.display_name}</span>
+                        <button
+                          onClick={() => deletePerson(p.id, p.display_name)}
+                          className="text-red-400 hover:text-red-300 transition-all p-1 hover:bg-red-500/10 rounded"
+                          title="Delete profile"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Real-time Logs Console */}
@@ -575,10 +985,10 @@ export function App() {
               <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Step-by-step Test</h3>
               <ol className="list-decimal list-inside space-y-2.5 text-xs text-zinc-400">
                 <li>Click <span className="text-cyan-300">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
-                <li>Toggle <span className="text-cyan-300">Enroll Face Profile</span>.</li>
-                <li>Input your name and click <span className="text-cyan-300">Capture & Register</span> to save your face.</li>
-                <li>Wait for success confirmation.</li>
-                <li>Look directly at the webcam within the guide lines to trigger the scan punch!</li>
+                <li>Click <span className="text-cyan-300">Enroll Face Profile</span>, enter your name, and click <span className="text-cyan-300">Capture & Register</span>.</li>
+                <li>Wait for the green success confirmation card (it will auto-close in 3s).</li>
+                <li>In <strong>Scan Mode</strong> (when enrollment is closed), look directly at the webcam inside the scanning circle.</li>
+                <li>The app will automatically match your face and display a green <strong>"Punch Success"</strong> card!</li>
               </ol>
             </div>
           </div>

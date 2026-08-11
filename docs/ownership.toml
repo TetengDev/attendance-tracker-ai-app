@@ -462,6 +462,7 @@ paths = [
   "backend/app/api/ws_scan.py",
   "backend/tests/test_ws_scan.py",
   "backend/tests/test_cors.py",
+  "backend/tests/test_logging.py",
   "docs/ownership.toml",
   "pyproject.toml",
   "uv.lock",

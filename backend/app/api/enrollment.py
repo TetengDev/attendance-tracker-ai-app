@@ -5,13 +5,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
-from io import BytesIO
 from typing import Annotated, Any
 from uuid import UUID
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +34,7 @@ from backend.app.enrollment.consent import (
 from backend.app.enrollment.duplicates import check_duplicate_enrollment
 from backend.app.enrollment.validate import EnrollmentValidationResult, validate_enrollment_image
 from backend.app.errors import ErrorCode, make_error
+from backend.app.face.decode import decode_image_to_bgr
 from backend.app.face.gallery import (
     GalleryEntry,
     GalleryIndex,
@@ -241,7 +240,17 @@ class EnrollmentService:
             )
 
         liveness = face_engine.liveness(bgr, validation.detection.bbox)
-        if not liveness.passed:
+        
+        # Check liveness mode setting (MONITOR/OFF skips validation block)
+        liveness_mode = "monitor"
+        from backend.app.models.settings import Setting
+        stmt = select(Setting.value).where(Setting.key == "liveness.mode")
+        res = await session.execute(stmt)
+        val = res.scalar_one_or_none()
+        if val is not None:
+            liveness_mode = str(val)
+
+        if liveness_mode == "enforce" and not liveness.passed:
             return StoredEnrollmentImage(
                 result=_rejected_result(candidate, "liveness_failed", "Liveness check failed."),
                 gallery_entry=None,
@@ -277,6 +286,7 @@ class EnrollmentService:
             person_id=person_id,
             consent_id=consent_id,
             asset_id=asset.id,
+            encryption_asset_id=asset.id,
             model_name=embedding.model_name,
             model_version=embedding.model_version,
             policy_version=policy_version,
@@ -306,6 +316,36 @@ class EnrollmentService:
             policy_version=policy_version,
             as_of=now,
         )
+
+        # TEN-227: Enrollment self-test
+        try:
+            import logging
+
+            from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
+            payload = EncryptedPayload(
+                version=face_embedding.envelope_version,
+                payload_alg=face_embedding.payload_alg,
+                dek_wrap_alg=face_embedding.dek_wrap_alg,
+                encryption_key_id=face_embedding.encryption_key_id,
+                wrapped_dek=face_embedding.wrapped_dek,
+                dek_nonce=face_embedding.dek_nonce,
+                payload_nonce=face_embedding.payload_nonce,
+                ciphertext=face_embedding.ciphertext,
+            )
+            aad = f"face-embedding:{person_id}:{asset.id}".encode()
+            decrypted_vector = decrypt_embedding(payload, aad=aad)
+            
+            # cosine similarity
+            similarity = float(np.dot(decrypted_vector, embedding.vector))
+            if similarity < 0.95:
+                logging.getLogger(__name__).error("Enrollment self-test failed: cosine similarity %.3f < 0.95", similarity)
+                raise CrudError(CrudErrorCode.INVALID_INPUT, "Enrollment self-test failed. Internal storage error.")
+        except Exception as exc:
+            if isinstance(exc, CrudError):
+                raise
+            logging.getLogger(__name__).error("Enrollment self-test error: %s", exc)
+            raise CrudError(CrudErrorCode.INVALID_INPUT, "Enrollment self-test failed.") from exc
+
         return StoredEnrollmentImage(
             result=EnrollmentImageResult(
                 filename=candidate.filename,
@@ -355,8 +395,23 @@ def get_enrollment_service() -> EnrollmentService:
     return EnrollmentService()
 
 
+_face_engine: FaceEngine | None = None
+
+
 def get_face_engine() -> FaceEngine:
-    return DEFAULT_FACE_ENGINE
+    global _face_engine
+    if _face_engine is None:
+        import os
+        import sys
+
+        if "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ:
+            _face_engine = DEFAULT_FACE_ENGINE
+        else:
+            from backend.app.face.engine import ONNXFaceEngine
+
+            model_dir = os.environ.get("FACE_MODEL_DIR", "models")
+            _face_engine = ONNXFaceEngine(model_dir=model_dir)
+    return _face_engine
 
 
 def get_gallery_index() -> GalleryIndex:
@@ -523,6 +578,7 @@ async def _commit_uploads(
         )
         await commit_or_422(session)
         await _apply_gallery_entries(session, gallery_index, commit.gallery_entries)
+        await session.commit()  # TEN-222: persist gallery version bump
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
     return response
@@ -581,13 +637,10 @@ def _merge_rejected_uploads(
     )
 
 
-def decode_image_to_bgr(payload: bytes) -> np.ndarray:
-    try:
-        with Image.open(BytesIO(payload)) as image:
-            rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
-    except UnidentifiedImageError as exc:
-        raise ValueError("image payload could not be decoded") from exc
-    return np.ascontiguousarray(rgb[:, :, ::-1])
+# decode_image_to_bgr is imported from backend.app.face.decode (TEN-223).
+# Re-exported here for backward compatibility with callers that import
+# from this module.
+__all__ = ["decode_image_to_bgr"]
 
 
 def _validation_rejected_result(

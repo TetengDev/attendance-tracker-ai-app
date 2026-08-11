@@ -34,6 +34,10 @@ class StaticFaceEngine:
         return Embedding(vector=vector, model_name="static", model_version="static-v1")
 
     @property
+    def model_name(self) -> str:
+        return "static"
+
+    @property
     def model_version(self) -> str:
         return "static-v1"
 

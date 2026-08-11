@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from backend.app.auth.device import get_device_token_key, hash_device_token
 from backend.app.auth.passwords import hash_admin_password
@@ -55,14 +55,16 @@ async def seed() -> None:
         key = get_device_token_key(settings.biometric_kek.get_secret_value())
         token_hash = hash_device_token("seed-device-token", key)
 
-        device = (
-            await session.execute(
-                select(Device).where(Device.token_display_prefix == SEED_DEVICE_PREFIX)
-            )
-        ).scalar_one_or_none()
+        SEED_DEVICE_ID = UUID("ee2872c4-f685-4843-b64d-8b29edfd086a")
+        device = await session.get(Device, SEED_DEVICE_ID)
         if device is None:
+            # Delete any old seeded device to avoid prefix conflicts
+            await session.execute(
+                delete(Device).where(Device.token_display_prefix == SEED_DEVICE_PREFIX)
+            )
             session.add(
                 Device(
+                    id=SEED_DEVICE_ID,
                     location_id=location.id or UUID(int=0),
                     mode=DeviceMode.FIXED,
                     form_factor=DeviceFormFactor.TABLET,
@@ -76,6 +78,7 @@ async def seed() -> None:
         else:
             device.token_hash = token_hash
             device.allowed_cidrs = ["127.0.0.1/32", "::1/128"]
+            device.token_display_prefix = SEED_DEVICE_PREFIX
 
 
 def main() -> None:

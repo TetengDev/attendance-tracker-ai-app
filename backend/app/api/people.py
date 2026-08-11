@@ -210,6 +210,44 @@ async def update_person(
     return PersonRead.model_validate(person)
 
 
+@router.delete("", status_code=204)
+async def delete_all_people(
+    session: SessionDep,
+    admin_user: AdminUserDep,
+    actor: ActorDep,
+) -> None:
+    from fastapi import HTTPException
+    from sqlalchemy import delete
+
+    from backend.app.config import get_settings
+    if get_settings().audit_chain_export_environment == "production":
+        raise HTTPException(status_code=403, detail="Cannot delete all people in production environment")
+
+    from backend.app.face.gallery import bump_gallery_version
+    from backend.app.models.attendance import AttendanceEvent
+    from backend.app.models.people import Person
+
+    # Delete all attendance events first to clear foreign key refs, then delete all people
+    await session.execute(delete(AttendanceEvent))
+    await session.execute(delete(Person))
+
+    # Bump gallery version so active WS scan connections reload immediately
+    await bump_gallery_version(session)
+
+    # Write audit log
+    actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
+    await audited_mutation(
+        session,
+        actor,
+        action="people.delete_all",
+        entity_type="person",
+        entity_id="all",
+        before=None,
+        after=None,
+    )
+    await commit_or_422(session)
+
+
 @router.delete("/{person_id}", status_code=204)
 async def delete_person(
     person_id: UUID,
@@ -223,6 +261,11 @@ async def delete_person(
         person = await service.get(session, admin_user, person_id, business_date=business_date)
         before = snapshot(person, PERSON_FIELDS)
         await service.delete(session, person)
+
+        # Bump gallery version so active WS connections reload immediately
+        from backend.app.face.gallery import bump_gallery_version
+        await bump_gallery_version(session)
+
         actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
         await audited_mutation(
             session,
