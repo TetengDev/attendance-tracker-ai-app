@@ -180,7 +180,7 @@ export function checkFrameGates(
   const y1 = kp1.y * 240;
 
   const iod = Math.sqrt((x0 - x1) ** 2 + (y0 - y1) ** 2);
-  metrics.interocular_px = parseFloat(iod.toFixed(2));
+  metrics.interocular_px = Math.round(iod);
 
   if (iod < settings.min_interocular_px) {
     return {
@@ -233,7 +233,7 @@ export function checkFrameGates(
 
   // 5. Mean Luma (Brightness)
   const luma = computeMeanLuma(imgData);
-  metrics.luma = parseFloat(luma.toFixed(2));
+  metrics.luma = Math.round(luma);
 
   if (luma < settings.luma_min || luma > settings.luma_max) {
     return {

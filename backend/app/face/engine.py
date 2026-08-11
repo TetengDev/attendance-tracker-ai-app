@@ -27,6 +27,7 @@ class ONNXFaceEngine:
             os.path.join(model_dir, "4_0_0_80x80_MiniFASNetV1SE.onnx"),
             threshold=liveness_threshold,
         )
+        self._model_name = "w600k_r50"
         self._model_version = "buffalo_l"
         self.det_score_min = det_score_min
 
@@ -70,6 +71,10 @@ class ONNXFaceEngine:
 
     def embed(self, aligned: np.ndarray) -> Embedding:
         return self.embedder.embed(aligned)
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     @property
     def model_version(self) -> str:

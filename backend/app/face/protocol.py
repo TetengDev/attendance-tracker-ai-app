@@ -49,6 +49,9 @@ class FaceEngine(Protocol):
     def embed(self, aligned: np.ndarray) -> Embedding: ...
 
     @property
+    def model_name(self) -> str: ...
+
+    @property
     def model_version(self) -> str: ...
 
 
@@ -167,6 +170,10 @@ class FakeFaceEngine:
         vector = rng.standard_normal(512).astype(np.float32)
         vector /= np.linalg.norm(vector)
         return Embedding(vector=vector, model_name=self._model_name, model_version=self._model_version)
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     @property
     def model_version(self) -> str:

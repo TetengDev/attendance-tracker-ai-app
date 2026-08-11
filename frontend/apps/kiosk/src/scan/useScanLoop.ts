@@ -33,6 +33,7 @@ export interface UseScanLoopResult {
   metrics: GateMetrics | null;
   reason: string | null;
   resetLockout: () => void;
+  detectedBbox: { x: number; y: number; w: number; h: number } | null;
 }
 
 interface StabilityFrame {
@@ -88,6 +89,7 @@ export function useScanLoop({
   const [isScanRunning, setIsScanRunning] = useState(false);
   const [metrics, setMetrics] = useState<GateMetrics | null>(null);
   const [reason, setReason] = useState<string | null>(null);
+  const [detectedBbox, setDetectedBbox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   // Memoize resolved gate settings to prevent loop recreation on every render/frame
   const resolvedSettings = useMemo(
@@ -172,6 +174,7 @@ export function useScanLoop({
   // Stop camera stream helper
   const stopCamera = useCallback(() => {
     stabilityQueueRef.current = []; // Clear queue on stream stop
+    setDetectedBbox(null);
     if (activeStreamRef.current) {
       activeStreamRef.current.getTracks().forEach((track) => track.stop());
       activeStreamRef.current = null;
@@ -324,8 +327,8 @@ export function useScanLoop({
         const finalBbox: [number, number, number, number] = [
           Math.round(relX),
           Math.round(relY),
-          Math.round(relW),
-          Math.round(relH),
+          Math.round(relX + relW),
+          Math.round(relY + relH),
         ];
 
         // Export as base64 JPEG
@@ -417,6 +420,19 @@ export function useScanLoop({
       // Detect faces
       const detectorResult = detector.detect(canvas320);
       const detections = detectorResult.detections;
+
+      // Update detected BBox state
+      if (detections.length === 1 && detections[0]?.boundingBox) {
+        const bbox = detections[0].boundingBox;
+        setDetectedBbox({
+          x: (bbox.originX / 320) * 100,
+          y: (bbox.originY / 240) * 100,
+          w: (bbox.width / 320) * 100,
+          h: (bbox.height / 240) * 100,
+        });
+      } else {
+        setDetectedBbox(null);
+      }
 
       // Handle Lockout state: if locked out, check if face has left the frame
       if (isLockedOutRef.current) {
@@ -584,5 +600,6 @@ export function useScanLoop({
     metrics,
     reason,
     resetLockout,
+    detectedBbox,
   };
 }

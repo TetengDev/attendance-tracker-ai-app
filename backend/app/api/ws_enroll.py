@@ -97,6 +97,7 @@ async def guided_enrollment_session(
                 response = commit.response
                 await session.commit()
                 await _apply_gallery_entries(session, gallery_index, commit.gallery_entries)
+                await session.commit()  # TEN-222: persist gallery version bump
             except CrudError as exc:
                 await session.rollback()
                 await websocket.send_json({"type": "error", "detail": exc.message})

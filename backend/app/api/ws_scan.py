@@ -88,9 +88,19 @@ router = APIRouter(prefix="/api/kiosk", tags=["kiosk"])
 # ---------------------------------------------------------------------------
 
 
-async def load_active_gallery_entries(db: AsyncSession) -> list[GalleryEntry]:
+async def load_active_gallery_entries(
+    db: AsyncSession,
+    model_name: str,
+    model_version: str,
+) -> list[GalleryEntry]:
     """Retrieve and decrypt all active face embeddings from the database."""
-    result = await db.execute(select(FaceEmbedding).where(FaceEmbedding.is_active.is_(True)))
+    result = await db.execute(
+        select(FaceEmbedding).where(
+            FaceEmbedding.is_active.is_(True),
+            FaceEmbedding.model_name == model_name,
+            FaceEmbedding.model_version == model_version,
+        )
+    )
     db_embeddings = result.scalars().all()
     entries = []
     for emb in db_embeddings:
@@ -105,7 +115,8 @@ async def load_active_gallery_entries(db: AsyncSession) -> list[GalleryEntry]:
             ciphertext=emb.ciphertext,
         )
         try:
-            vector = decrypt_embedding(payload)
+            aad = f"face-embedding:{emb.person_id}:{emb.encryption_asset_id}".encode()
+            vector = decrypt_embedding(payload, aad=aad)
             entries.append(
                 GalleryEntry(
                     person_id=emb.person_id,
@@ -253,9 +264,15 @@ async def kiosk_websocket_endpoint(
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+        # Cache frequently-used attributes to avoid triggering lazy DB loads
+        # (which can call await-only SQLAlchemy helpers outside a greenlet)
+        cached_device_id = device_id
+        cached_allowed_cidrs = device.allowed_cidrs
+        cached_device_mode = device.mode
+        cached_location_id = device.location_id
         
         # Check revocation status
-        if global_revocation_registry.is_revoked(device.id):
+        if global_revocation_registry.is_revoked(cached_device_id):
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
@@ -270,7 +287,7 @@ async def kiosk_websocket_endpoint(
 
         # Check allowed CIDRs
         client_ip = get_client_ip(websocket)
-        if not is_ip_allowed(client_ip, device.allowed_cidrs):
+        if not is_ip_allowed(client_ip, cached_allowed_cidrs):
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
@@ -284,7 +301,7 @@ async def kiosk_websocket_endpoint(
             return
 
         # Check location condition for fixed devices
-        if device.mode == DeviceMode.FIXED and device.location_id is None:
+        if cached_device_mode == DeviceMode.FIXED and cached_location_id is None:
             await websocket.send_json(
                 ErrorMessage(
                     type=ServerMessageType.ERROR,
@@ -299,7 +316,11 @@ async def kiosk_websocket_endpoint(
 
         # 3. Synchronize gallery index and get settings context
         async def load_entries_fn() -> list[GalleryEntry]:
-            return await load_active_gallery_entries(session)
+            return await load_active_gallery_entries(
+                session,
+                face_engine.model_name,
+                face_engine.model_version,
+            )
 
         await gallery_index.reload_if_stale(session, load_entries_fn)
 
@@ -327,10 +348,27 @@ async def kiosk_websocket_endpoint(
             ).model_dump(mode="json")
         )
 
+        device_id = device.id
         # 4. Message loop
         while True:
             payload = await websocket.receive_json()
             try:
+                # Refresh/bind the device instance to ensure it's not expired from previous commits/rollbacks
+                device_db = await session.get(Device, device_id)
+                if device_db is None:
+                    await websocket.send_json(
+                        ErrorMessage(
+                            type=ServerMessageType.ERROR,
+                            error=ErrorBody(
+                                code=ErrorCode.DEVICE_REVOKED,
+                                message="Device has been revoked",
+                            ),
+                        ).model_dump(mode="json")
+                    )
+                    await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                    return
+                device = device_db
+
                 msg_type = payload.get("type")
                 if msg_type == ClientMessageType.HEARTBEAT:
                     heartbeat = Heartbeat.model_validate(payload)
@@ -457,15 +495,41 @@ async def kiosk_websocket_endpoint(
                     await websocket.send_json({"type": ServerMessageType.DETECTED})
                     await websocket.send_json({"type": ServerMessageType.CHECKING})
 
+                    # Reload gallery if stale
+                    await gallery_index.reload_if_stale(session, load_entries_fn)
+
+                    # Get resolved settings for the execution context
+                    resolved_settings = await resolve_db_settings(session, context)
+
                     # Check active scan session
                     scan_session = await active_scan_session_for_device(
                         session, device_id=device.id
                     )
+                    if scan_session is None and device.mode == DeviceMode.FIXED:
+                        assert device.location_id is not None
+                        from backend.app.models.sessions import ScanSessionLocationSource
+                        from backend.app.scan.sessions import open_scan_session
+                        scan_session = open_scan_session(
+                            device,
+                            location_id=device.location_id,
+                            operator_admin_id=None,
+                            location_source=ScanSessionLocationSource.DEVICE_FIXED,
+                            started_at=datetime.now(tz=UTC),
+                            settings=resolved_settings.settings,
+                        )
+                        session.add(scan_session)
+                        await session.commit()
+                        logger.info("Implicitly created scan session %s for fixed device %s", scan_session.id, device.id)
+
                     try:
                         attribution = require_scan_attribution(
-                            device, scan_session, now=datetime.now(tz=UTC)
+                            device,
+                            scan_session,
+                            now=datetime.now(tz=UTC),
+                            settings=resolved_settings.settings,
                         )
                     except ScanSessionError as exc:
+                        logger.warning("Scan attribution failed for device=%s: %s", device.id if device is not None else 'unknown', str(exc))
                         await websocket.send_json(
                             ErrorMessage(
                                 type=ServerMessageType.ERROR,
@@ -476,12 +540,6 @@ async def kiosk_websocket_endpoint(
                             ).model_dump(mode="json")
                         )
                         continue
-
-                    # Reload gallery if stale
-                    await gallery_index.reload_if_stale(session, load_entries_fn)
-
-                    # Get resolved settings for the execution context
-                    resolved_settings = await resolve_db_settings(session, context)
 
                     # Process each frame in the burst
                     outputs: list[tuple[ScanOutput, int]] = []
@@ -664,6 +722,13 @@ async def kiosk_websocket_endpoint(
                             )
                             session.add(event)
                             await session.commit()
+
+                        logger.warning(
+                            "Scan burst rejected: code=%s message=%s details=%s",
+                            final_error.code.value,
+                            final_error.message or final_error.envelope()["error"]["message"],
+                            final_error.details,
+                        )
 
                         # Send error message frame
                         await websocket.send_json(

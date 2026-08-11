@@ -187,6 +187,10 @@ class FaceEmbedding(EncryptedPayloadColumns, Base):
         ForeignKey("enrollment_assets.id", ondelete="SET NULL"),
         nullable=True,
     )
+    encryption_asset_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     model_version: Mapped[str] = mapped_column(String(128), nullable=False)
     policy_version: Mapped[str] = mapped_column(String(64), nullable=False)

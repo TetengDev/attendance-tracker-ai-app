@@ -30,7 +30,7 @@ import cv2
 import numpy as np
 
 from backend.app.errors import DomainError, ErrorCode
-from backend.app.face.gallery import GalleryIndex, MatchDecision, MatchResult
+from backend.app.face.gallery import GalleryIndex, MatchDecision, MatchResult, MatchThresholds
 from backend.app.face.protocol import Detection, Embedding, FaceEngine, LivenessResult
 from backend.app.settings import get_float_setting, get_int_setting
 from backend.app.settings.registry import default_settings
@@ -287,7 +287,8 @@ def run_scan_pipeline(
 
     # ── 6. Gallery match ─────────────────────────────────────────────────
     t0 = time.perf_counter()
-    match_result: MatchResult = gallery.match(embedding.vector)
+    thresholds = MatchThresholds.from_settings(values)
+    match_result: MatchResult = gallery.match(embedding.vector, thresholds=thresholds)
     match_ms = (time.perf_counter() - t0) * 1000
 
     # ── 7. Decision + cooldown + impossible-travel ───────────────────────
@@ -394,13 +395,21 @@ def run_scan_pipeline(
         total_ms=round(total_ms, 2),
     )
 
+    gallery_stats = gallery.stats()
+    candidates = [
+        (str(c.person_id), str(c.embedding_id), round(c.score, 4))
+        for c in match_result.candidates
+    ]
     logger.info(
-        "scan_pipeline person=%s outcome=%s top1=%.4f total=%.1fms",
+        "scan_pipeline person=%s outcome=%s top1=%.4f total=%.1fms gallery_size=%d gallery_version=%d",
         person_id,
         outcome,
         top1_score or 0.0,
         total_ms,
+        gallery_stats.size,
+        gallery_stats.version,
     )
+    logger.debug("scan_pipeline candidates=%s", candidates)
 
     return ScanOutput(
         person_id=person_id,
