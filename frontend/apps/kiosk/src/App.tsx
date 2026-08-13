@@ -59,8 +59,8 @@ export function App() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanInfo, setScanInfo] = useState<string | null>(null);
   const [isMatching, setIsMatching] = useState(false);
+  const [pinValue, setPinValue] = useState("");
   const [relaxedGating, setRelaxedGating] = useState(true);
-
   const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
 
   // Enrollment state
@@ -366,6 +366,46 @@ export function App() {
     onGatingPassed: () => setGatingStatus("Perfect! Checking face..."),
     onDetected: () => playBeep(520, "sine", 0.05),
   });
+
+  // PIN / QR Fallback scan functionality
+  const sendCheckIn = (externalId: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const idempotencyKey = crypto.randomUUID();
+      const payload = {
+        type: "check_in",
+        external_id: externalId,
+        idempotency_key: idempotencyKey,
+        direction: "in"
+      };
+      logMessage(`Sending manual check-in request (external_id: ${externalId}, idempotency_key: ${idempotencyKey})`, "info");
+      setIsMatching(true);
+      setScanError(null);
+      wsRef.current.send(JSON.stringify(payload));
+    } else {
+      logMessage("Check-in failed: WebSocket is not connected.", "error");
+      setScanError("Kiosk is disconnected. Please connect first.");
+    }
+  };
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinValue.trim()) {
+      sendCheckIn(pinValue.trim());
+      setPinValue("");
+    }
+  };
+
+  const handleKeypadPress = (val: string) => {
+    setPinValue((prev) => prev + val);
+  };
+
+  const handleKeypadClear = () => {
+    setPinValue("");
+  };
+
+  const handleKeypadBackspace = () => {
+    setPinValue((prev) => prev.slice(0, -1));
+  };
 
   // Local Dev Enrollment Functionality
   const enrollFace = async () => {
@@ -855,7 +895,80 @@ export function App() {
               </button>
             )}
           </div>
-        </div>
+          {/* PIN / QR Code Fallback Card */}
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-300">PIN / QR Code Fallback</h2>
+                  <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase font-mono">Accessibility</span>
+                </div>
+                
+                <p className="text-xs text-zinc-400">
+                  Type your ID/PIN or position your QR code in front of the camera (simulated via text input).
+                </p>
+
+                {/* Input with inline submit */}
+                <form onSubmit={handlePinSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter your PIN or Scan QR Code..."
+                    value={pinValue}
+                    onChange={(e) => setPinValue(e.target.value)}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="flex-1 rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isMatching || !pinValue.trim() || wsStatus !== "connected"}
+                    className="bg-cyan-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl hover:bg-cyan-400 transition-all text-sm shadow-lg shadow-cyan-500/10"
+                  >
+                    Check In
+                  </button>
+                </form>
+
+                {/* Tactile Touchscreen Keypad */}
+                <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto w-full pt-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => handleKeypadPress(num.toString())}
+                      disabled={isMatching || wsStatus !== "connected"}
+                      className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 hover:border-white/10 active:scale-95 transition-all text-sm select-none"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleKeypadClear}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-red-400 hover:text-red-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress("0")}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleKeypadBackspace}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm flex items-center justify-center select-none"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
         {/* Right Side: Setup instructions and Dev Tools */}
         {import.meta.env.DEV && (

@@ -85,7 +85,7 @@ class MockSession:
             allowed_cidrs=["127.0.0.1/32"],
             settings_override={},
         )
-        self.person_a = Person(id=PERSON_A_ID, display_name="Alice")
+        self.person_a = Person(id=PERSON_A_ID, display_name="Alice", external_id="12345")
         self.person_b = Person(id=PERSON_B_ID, display_name="Bob")
         self.scan_session = ScanSession(
             id=SESSION_ID,
@@ -111,6 +111,7 @@ class MockSession:
                 version=1,
             )
         ]
+        self.should_find_person = True
         self.existing_event: AttendanceEvent | None = None
 
     async def get(self, model: type, identifier: Any) -> Any | None:
@@ -151,6 +152,8 @@ class MockSession:
             return MockResult(self.scan_session)
         if "FROM attendance_events" in sql:
             return MockResult(self.existing_event)
+        if "FROM people" in sql:
+            return MockResult(self.person_a if self.should_find_person else None)
 
         return MockResult(None)
 
@@ -615,3 +618,69 @@ class TestWebSocketFrameBurst:
             # Verify session rollback was called
             assert mock_session.rolled_back is True
 
+    def test_check_in_success(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "12345",
+                    "idempotency_key": "chk-idem-key",
+                    "direction": "in",
+                }
+            )
+            res = ws.receive_json()
+            assert res["type"] == "result"
+            assert res["status"] == "accepted"
+            assert res["person"]["id"] == str(PERSON_A_ID)
+            assert res["person"]["display_name"] == "Alice"
+            assert res["committed"] is True
+
+            # Verify AttendanceEvent was persisted
+            assert len(mock_session.added) == 1
+            event = mock_session.added[0]
+            assert isinstance(event, AttendanceEvent)
+            assert event.idempotency_key == "chk-idem-key"
+            assert event.person_id == PERSON_A_ID
+            assert event.outcome == AttendanceEventOutcome.ACCEPTED
+
+    def test_check_in_invalid_pin(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
+        mock_session.should_find_person = False
+
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "99999",
+                    "idempotency_key": "chk-idem-key-invalid",
+                    "direction": "in",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.UNKNOWN_FACE.value
+            assert "Invalid PIN or QR code" in err["error"]["message"]
+            assert len(mock_session.added) == 0
