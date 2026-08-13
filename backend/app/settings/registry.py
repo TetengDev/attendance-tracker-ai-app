@@ -80,12 +80,12 @@ SETTINGS_SCHEMA: dict[str, SettingSpec] = {
         "enum", LivenessMode.MONITOR.value, "O·L·D", enum=tuple(e.value for e in LivenessMode)
     ),
     "liveness.threshold": SettingSpec("float", 0.75, "O", min=0.0, max=1.0),
-    "scan.cooldown_seconds": SettingSpec("int", 60, "O·L", min=0, max=3600),
+    "scan.cooldown_seconds": SettingSpec("int", 30, "O·L", min=0, max=3600),
     "scan.cooldown_scope": SettingSpec(
         "enum", CooldownScope.LOCATION.value, "O", enum=tuple(e.value for e in CooldownScope)
     ),
     "scan.duplicate_window_seconds": SettingSpec("int", 300, "O", min=0, max=3600),
-    "scan.rate_per_second": SettingSpec("int", 2, "O·D", min=1, max=20),
+    "scan.rate_per_second": SettingSpec("int", 5, "O·D", min=1, max=20),
     "scan.unknown_rate_per_minute": SettingSpec("int", 10, "O·D", min=1, max=120),
     "scan.unknown_lockout_seconds": SettingSpec("int", 60, "O·D", min=0, max=3600),
     "scan.min_inter_location_seconds": SettingSpec("int", 120, "O", min=0, max=7200),

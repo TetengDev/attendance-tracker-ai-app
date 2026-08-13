@@ -55,8 +55,21 @@ async def load_gallery_from_db():
         )
         embeddings = result.scalars().all()
         
+        from backend.app.crypto.envelope import EncryptedPayload
+        
         for emb in embeddings:
-            vector = decrypt_embedding(emb)
+            aad = f"face-embedding:{emb.person_id}:{emb.encryption_asset_id}".encode()
+            payload = EncryptedPayload(
+                version=emb.envelope_version,
+                payload_alg=emb.payload_alg,
+                dek_wrap_alg=emb.dek_wrap_alg,
+                encryption_key_id=emb.encryption_key_id,
+                wrapped_dek=emb.wrapped_dek,
+                dek_nonce=emb.dek_nonce,
+                payload_nonce=emb.payload_nonce,
+                ciphertext=emb.ciphertext
+            )
+            vector = decrypt_embedding(payload, aad=aad)
             entries.append(GalleryEntry(
                 person_id=emb.person_id,
                 embedding_id=emb.id,
@@ -117,7 +130,7 @@ async def cmd_probe(args):
     
     print_step("Matching against gallery...")
     t0 = time.perf_counter()
-    candidates = gallery.top_k(embedding, k=5)
+    candidates = gallery.top_k(embedding.vector, k=5)
     t1 = time.perf_counter()
     print_success("Match completed.", (t1 - t0) * 1000)
     

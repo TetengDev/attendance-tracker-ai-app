@@ -6,7 +6,7 @@ import type { FrameBurst, ServerMessage, Result, ErrorMessage, TokenRotation } f
 // Configuration for local dev seed device
 const SEED_DEVICE_ID = "ee2872c4-f685-4843-b64d-8b29edfd086a";
 const SEED_DEVICE_TOKEN = "seed-device-token";
-const SEED_ADMIN_ID = "3db96e05-898f-4555-b869-3a85cece722e";
+const SEED_ADMIN_ID = "14d75b41-d558-4a73-9369-93f32ef86a70";
 
 // Browser Web Audio synthesizer helper for alerts
 const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) => {
@@ -57,6 +57,7 @@ export function App() {
   const [gatingStatus, setGatingStatus] = useState<string | null>("Initialize camera feed...");
   const [scanResult, setScanResult] = useState<Result | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanInfo, setScanInfo] = useState<string | null>(null);
   const [isMatching, setIsMatching] = useState(false);
   const [relaxedGating, setRelaxedGating] = useState(true);
 
@@ -232,7 +233,7 @@ export function App() {
         } else if (msg.type === "result") {
           setIsMatching(false);
           const result = msg as Result;
-          if (result.status === "match" && result.person) {
+          if (result.status === "accepted" && result.person) {
             logMessage(`Match result: face matched successfully (UUID: ${result.person.id})`, "info");
             playBeep(880, "sine", 0.12);
             setTimeout(() => playBeep(1100, "sine", 0.15), 80);
@@ -254,6 +255,20 @@ export function App() {
         } else if (msg.type === "error") {
           setIsMatching(false);
           const err = msg as ErrorMessage;
+          
+          if (err.error.code === "RATE_LIMITED") {
+            // Silently ignore device-level burst rate limits to avoid annoying the user
+            return;
+          }
+          
+          if (err.error.code === "COOLDOWN_ACTIVE") {
+            // Treat cooldown as a friendly reminder rather than an error
+            logMessage(`Match result: You are already checked in.`, "info");
+            setScanInfo("You are already checked in.");
+            setTimeout(() => setScanInfo(null), 3000);
+            return;
+          }
+
           logMessage(`Scan error event received: ${err.error.message} (code: ${err.error.code})`, "error");
           if (err.error.details) {
             logMessage(`Error Details: ${JSON.stringify(err.error.details)}`, "error");
@@ -677,6 +692,26 @@ export function App() {
               </div>
             )}
 
+            {/* Flash Effect on Capture */}
+            {isMatching && (
+              <div className="absolute inset-0 bg-white pointer-events-none animate-camera-flash z-10" />
+            )}
+
+            {/* Processing Identity Overlay */}
+            {isMatching && (
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center pointer-events-none z-20">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative h-16 w-16">
+                    <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20" />
+                    <div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin" />
+                  </div>
+                  <span className="text-cyan-300 font-mono text-sm tracking-[0.2em] font-semibold animate-pulse shadow-black drop-shadow-md">
+                    PROCESSING BIOMETRICS
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Enrollment Guide Overlay */}
             {isScanRunning && showEnroll && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/10">
@@ -795,6 +830,14 @@ export function App() {
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-red-950/90 border border-red-500/30 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
                 <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
                 <span className="text-red-200 text-sm font-medium">{scanError}</span>
+              </div>
+            )}
+
+            {/* Friendly Info Notification */}
+            {scanInfo && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-cyan-950/90 border border-cyan-500/30 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
+                <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-cyan-200 text-sm font-medium">{scanInfo}</span>
               </div>
             )}
           </div>

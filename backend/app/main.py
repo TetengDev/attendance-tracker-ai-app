@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from logging.handlers import RotatingFileHandler
+from logging.handlers import BaseRotatingHandler, TimedRotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from backend.app.api.consents import router as consents_router
 from backend.app.api.device_pairing import router as device_pairing_router
 from backend.app.api.devices import router as devices_router
+from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.enrollment import router as enrollment_router
 from backend.app.api.groups import router as groups_router
 from backend.app.api.health import router as health_router
@@ -20,6 +21,7 @@ from backend.app.api.locations import router as locations_router
 from backend.app.api.people import router as people_router
 from backend.app.api.people_merge import router as people_merge_router
 from backend.app.api.sessions import router as sessions_router
+from backend.app.api.settings import router as settings_router
 from backend.app.api.ws_enroll import router as ws_enroll_router
 from backend.app.api.ws_scan import router as ws_scan_router
 from backend.app.audit.middleware import AuditMiddleware
@@ -32,24 +34,31 @@ def setup_file_logging() -> None:
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
     log_file = logs_dir / "app.log"
-    file_handler = RotatingFileHandler(
+    file_handler = TimedRotatingFileHandler(
         log_file,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=3,
+        when="H",
+        interval=3,
+        backupCount=4,  # Keep 12 hours of logs by default
         encoding="utf-8"
     )
     formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
 
     root_logger = logging.getLogger()
-    if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+    if not any(isinstance(h, TimedRotatingFileHandler) for h in root_logger.handlers):
+        # Remove any existing file handlers (useful during hot reloads)
+        root_logger.handlers = [h for h in root_logger.handlers if not isinstance(h, BaseRotatingHandler)]
         root_logger.addHandler(file_handler)
-        if root_logger.level > logging.INFO:
-            root_logger.setLevel(logging.INFO)
+        if root_logger.level > logging.DEBUG:
+            root_logger.setLevel(logging.DEBUG)
+    
+    # Ensure our specific app logger is at DEBUG
+    logging.getLogger("attendance_tracker").setLevel(logging.DEBUG)
+    logging.getLogger("backend").setLevel(logging.DEBUG)
 
 
 @asynccontextmanager
@@ -94,6 +103,8 @@ def create_app() -> FastAPI:
     app.include_router(locations_router)
     app.include_router(devices_router)
     app.include_router(device_pairing_router)
+    app.include_router(dashboard_router)
+    app.include_router(settings_router)
     return app
 
 
