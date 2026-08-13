@@ -79,7 +79,9 @@ class PeopleService:
         limit: int,
         offset: int,
     ) -> list[Person]:
-        query = scoped_people_query(admin_user, business_date=business_date).limit(limit).offset(offset)
+        query = (
+            scoped_people_query(admin_user, business_date=business_date).limit(limit).offset(offset)
+        )
         return list((await session.execute(query)).scalars())
 
     async def get(
@@ -90,9 +92,9 @@ class PeopleService:
         *,
         business_date: date,
     ) -> Person:
-        query: Select[tuple[Person]] = scoped_people_query(admin_user, business_date=business_date).where(
-            Person.id == person_id
-        )
+        query: Select[tuple[Person]] = scoped_people_query(
+            admin_user, business_date=business_date
+        ).where(Person.id == person_id)
         person = (await session.execute(query)).scalar_one_or_none()
         if person is None:
             raise CrudError(CrudErrorCode.NOT_FOUND, "person not found")
@@ -220,8 +222,11 @@ async def delete_all_people(
     from sqlalchemy import delete
 
     from backend.app.config import get_settings
+
     if get_settings().audit_chain_export_environment == "production":
-        raise HTTPException(status_code=403, detail="Cannot delete all people in production environment")
+        raise HTTPException(
+            status_code=403, detail="Cannot delete all people in production environment"
+        )
 
     from backend.app.face.gallery import bump_gallery_version
     from backend.app.models.attendance import AttendanceEvent
@@ -264,6 +269,7 @@ async def delete_person(
 
         # Bump gallery version so active WS connections reload immediately
         from backend.app.face.gallery import bump_gallery_version
+
         await bump_gallery_version(session)
 
         actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)

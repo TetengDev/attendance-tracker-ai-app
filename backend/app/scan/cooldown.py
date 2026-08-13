@@ -187,10 +187,12 @@ class CooldownCheckerProxy(CooldownChecker):
     def delegate(self) -> CooldownChecker:
         if self._delegate is None:
             import sys
+
             if "pytest" in sys.modules:
                 self._delegate = InMemoryCooldownChecker()
             else:
                 from backend.app.scan.limits import RedisCooldownChecker
+
                 self._delegate = RedisCooldownChecker()
         return self._delegate
 

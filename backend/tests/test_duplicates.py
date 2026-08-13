@@ -34,7 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 class FakeSetting:
-    def __init__(self, key: str, scope: SettingScope, scope_id: UUID | None, value: Any, version: int) -> None:
+    def __init__(
+        self, key: str, scope: SettingScope, scope_id: UUID | None, value: Any, version: int
+    ) -> None:
         self.key = key
         self.scope = scope
         self.scope_id = scope_id
@@ -112,7 +114,9 @@ class FakeSession:
         pass
 
 
-def make_mock_embedding(person_id: UUID, emb_id: UUID, vector: np.ndarray, asset_id: UUID | None = None) -> FaceEmbedding:
+def make_mock_embedding(
+    person_id: UUID, emb_id: UUID, vector: np.ndarray, asset_id: UUID | None = None
+) -> FaceEmbedding:
     a_id = asset_id or uuid4()
     payload = encrypt_embedding(vector, aad=f"face-embedding:{person_id}:{a_id}".encode())
     return FaceEmbedding(
@@ -180,7 +184,9 @@ async def test_check_duplicate_enrollment_allows_match_with_same_person() -> Non
 
 
 @pytest.mark.anyio
-async def test_check_duplicate_enrollment_blocks_match_with_different_person_above_threshold() -> None:
+async def test_check_duplicate_enrollment_blocks_match_with_different_person_above_threshold() -> (
+    None
+):
     session = FakeSession()
     gallery_index = GalleryIndex()
     alice_id = uuid4()
@@ -310,9 +316,12 @@ def test_upload_duplicate_face_returns_409_conflict(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("backend.app.audit.middleware._append_entry", fake_append_entry)
 
     # Mock validate_enrollment_image to always pass
-    def fake_validate_enrollment_image(bgr: np.ndarray, face_engine: Any, *args: Any, **kwargs: Any) -> Any:
+    def fake_validate_enrollment_image(
+        bgr: np.ndarray, face_engine: Any, *args: Any, **kwargs: Any
+    ) -> Any:
         from backend.app.enrollment.validate import EnrollmentQuality, EnrollmentValidationResult
         from backend.app.face.protocol import Detection
+
         det = Detection(
             bbox=(10, 10, 100, 100),
             det_score=0.95,
@@ -345,6 +354,7 @@ def test_upload_duplicate_face_returns_409_conflict(monkeypatch: pytest.MonkeyPa
     async def fake_require_consent(*a: Any, **k: Any) -> Any:
         class FakeConsent:
             id = uuid4()
+
         return FakeConsent()
 
     async def fake_add_consented_face_embedding(*a: Any, **k: Any) -> None:

@@ -4,6 +4,7 @@ Revision ID: 4a1f0e9d6c2b
 Revises: b0a9b614f8ef
 Create Date: 2026-08-03 20:05:00.000000
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -49,9 +50,13 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint("display_name <> ''", name=op.f("ck_admin_users_display_name_non_empty")),
+        sa.CheckConstraint(
+            "display_name <> ''", name=op.f("ck_admin_users_display_name_non_empty")
+        ),
         sa.CheckConstraint("email <> ''", name=op.f("ck_admin_users_email_non_empty")),
-        sa.CheckConstraint("password_hash <> ''", name=op.f("ck_admin_users_password_hash_non_empty")),
+        sa.CheckConstraint(
+            "password_hash <> ''", name=op.f("ck_admin_users_password_hash_non_empty")
+        ),
         sa.CheckConstraint(
             "role IN ('owner', 'admin', 'hr', 'supervisor', 'viewer')",
             name=op.f("ck_admin_users_role_valid"),

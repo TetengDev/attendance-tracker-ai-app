@@ -86,7 +86,10 @@ class AdminSession(Base):
     __table_args__ = (
         UniqueConstraint("session_hash", name="uq_admin_sessions_session_hash"),
         CheckConstraint("octet_length(session_hash) = 32", name="session_hash_sha256_length"),
-        CheckConstraint("csrf_token_hash IS NULL OR octet_length(csrf_token_hash) = 32", name="csrf_hash_sha256_length"),
+        CheckConstraint(
+            "csrf_token_hash IS NULL OR octet_length(csrf_token_hash) = 32",
+            name="csrf_hash_sha256_length",
+        ),
         CheckConstraint("absolute_expires_at > created_at", name="absolute_expiry_after_created"),
         CheckConstraint("idle_expires_at > created_at", name="idle_expiry_after_created"),
     )

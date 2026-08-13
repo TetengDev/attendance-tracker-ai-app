@@ -17,6 +17,7 @@ class ClientMessageType(str, Enum):
     HELLO = "hello"
     HEARTBEAT = "heartbeat"
     FRAME_BURST = "frame_burst"
+    CHECK_IN = "check_in"
 
 
 class ServerMessageType(str, Enum):
@@ -77,7 +78,15 @@ class FrameBurst(StrictModel):
     gate_metrics: GateMetrics | None = None
 
 
-ClientMessage = Hello | Heartbeat | FrameBurst
+class CheckIn(StrictModel):
+    type: Literal[ClientMessageType.CHECK_IN] = ClientMessageType.CHECK_IN
+    idempotency_key: str
+    external_id: str
+    direction: str = "in"
+    monotonic_offset_ms: int = Field(default=0, ge=0)
+
+
+ClientMessage = Hello | Heartbeat | FrameBurst | CheckIn
 
 
 class Ready(StrictModel):
@@ -137,4 +146,13 @@ class TokenRotation(StrictModel):
     device_token: str
 
 
-ServerMessage = Ready | Detected | Checking | Result | SettingsPush | Backpressure | ErrorMessage | TokenRotation
+ServerMessage = (
+    Ready
+    | Detected
+    | Checking
+    | Result
+    | SettingsPush
+    | Backpressure
+    | ErrorMessage
+    | TokenRotation
+)

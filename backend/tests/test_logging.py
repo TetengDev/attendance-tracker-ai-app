@@ -20,6 +20,7 @@ def test_log_kiosk_message_success(monkeypatch: MonkeyPatch) -> None:
     # Mock audit middleware db call
     async def fake_append(*args: typing.Any, **kwargs: typing.Any) -> None:
         pass
+
     monkeypatch.setattr("backend.app.audit.middleware.append_audit_entry", fake_append)
 
     app = create_app()
@@ -29,7 +30,9 @@ def test_log_kiosk_message_success(monkeypatch: MonkeyPatch) -> None:
             json={"message": "Test message\nwith injection attempt\r"},
         )
         assert response.status_code == 204
-        mock_logger.info.assert_called_once_with("[CLIENT] Test message\\nwith injection attempt\\r")
+        mock_logger.info.assert_called_once_with(
+            "[CLIENT] Test message\\nwith injection attempt\\r"
+        )
 
 
 def test_log_kiosk_message_truncation(monkeypatch: MonkeyPatch) -> None:
@@ -42,6 +45,7 @@ def test_log_kiosk_message_truncation(monkeypatch: MonkeyPatch) -> None:
     # Mock audit middleware db call
     async def fake_append(*args: typing.Any, **kwargs: typing.Any) -> None:
         pass
+
     monkeypatch.setattr("backend.app.audit.middleware.append_audit_entry", fake_append)
 
     app = create_app()

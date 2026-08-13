@@ -60,7 +60,9 @@ def test_attendance_event_uses_bigint_identity_and_nullable_business_date() -> N
 
 
 def test_attendance_event_constraints_encode_replay_and_score_invariants() -> None:
-    constraints = {constraint.name for constraint in cast(Table, AttendanceEvent.__table__).constraints}
+    constraints = {
+        constraint.name for constraint in cast(Table, AttendanceEvent.__table__).constraints
+    }
 
     assert "uq_attendance_events_idempotency_key" in constraints
     assert "ck_attendance_events_idempotency_key_non_empty" in constraints
@@ -112,7 +114,9 @@ def test_attendance_override_has_actor_reason_and_status() -> None:
         reason="Approved leave",
         actor_admin_id=UUID("00000000-0000-0000-0000-000000000007"),
     )
-    constraints = {constraint.name for constraint in cast(Table, AttendanceOverride.__table__).constraints}
+    constraints = {
+        constraint.name for constraint in cast(Table, AttendanceOverride.__table__).constraints
+    }
 
     assert override.status == AttendanceStatus.EXCUSED
     assert override.reason == "Approved leave"
@@ -239,10 +243,13 @@ def test_rebuild_attendance_records_collapses_merged_person_rows() -> None:
         merged_into={MERGED_PERSON_ID: PERSON_ID},
     )
 
-    assert canonical_attendance_grain(
-        AttendanceGrain(MERGED_PERSON_ID, BUSINESS_DATE, SHIFT_ID),
-        {MERGED_PERSON_ID: PERSON_ID},
-    ).person_id == PERSON_ID
+    assert (
+        canonical_attendance_grain(
+            AttendanceGrain(MERGED_PERSON_ID, BUSINESS_DATE, SHIFT_ID),
+            {MERGED_PERSON_ID: PERSON_ID},
+        ).person_id
+        == PERSON_ID
+    )
     assert len(records) == 1
     assert records[0].person_id == PERSON_ID
     assert records[0].first_event_id == survivor_event.id

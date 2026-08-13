@@ -5,6 +5,7 @@ Reads ownership.toml in the repo root and ensures every changed file in the
 PR is covered by at least one ownership.paths glob. Exits 0 on success, 1 on
 failure. Intended to run in CI (checkout at the PR commit).
 """
+
 import os
 import subprocess
 import sys
@@ -70,5 +71,6 @@ def main() -> int:
     print("Ownership check passed — all changed files covered by ownership.toml")
     return 0
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(main())

@@ -11,7 +11,9 @@ import os
 
 # Set valid default environment variables before any modules are imported
 if not os.environ.get("BIOMETRIC_KEK"):
-    os.environ["BIOMETRIC_KEK"] = "kek.test:" + base64.urlsafe_b64encode(bytes([9]) * 32).decode().rstrip("=")
+    os.environ["BIOMETRIC_KEK"] = "kek.test:" + base64.urlsafe_b64encode(
+        bytes([9]) * 32
+    ).decode().rstrip("=")
 
 if not os.environ.get("DATABASE_URL"):
     os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost:5432/attendance"

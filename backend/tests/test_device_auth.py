@@ -109,16 +109,18 @@ class MockSession:
             return MockResult(1)
 
         if "FROM settings" in sql:
-            return MockResult([
-                Setting(
-                    id=uuid4(),
-                    key="liveness.mode",
-                    scope=SettingScope.ORG,
-                    scope_id=None,
-                    value="enforce",
-                    version=1,
-                )
-            ])
+            return MockResult(
+                [
+                    Setting(
+                        id=uuid4(),
+                        key="liveness.mode",
+                        scope=SettingScope.ORG,
+                        scope_id=None,
+                        value="enforce",
+                        version=1,
+                    )
+                ]
+            )
 
         return MockResult(None)
 
@@ -151,7 +153,7 @@ def client(
     # Bypass audit logging dependency
     monkeypatch.setattr("backend.app.api.common.audited_mutation", lambda *a, **k: None)
     monkeypatch.setattr("backend.app.audit.middleware._append_entry", async_none)
-    
+
     # Configure JWT_SECRET to match current BIOMETRIC_KEK
     secret_key = get_test_secret_key()
     monkeypatch.setenv("JWT_SECRET", secret_key)
@@ -165,6 +167,7 @@ def client(
             id = ADMIN_USER_ID
             role = "admin"
             is_active = True
+
         return FakeAdmin()
 
     # Import authenticated_admin_user from common to override it
@@ -180,8 +183,11 @@ def client(
 
 # ── Test Cases ────────────────────────────────────────────────────────────────
 
+
 class TestDevicePairingFlow:
-    def test_generate_pairing_code_success(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_generate_pairing_code_success(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         response = client.post(
             f"/api/devices/{DEVICE_ID}/pairing-code",
             headers={"x-admin-id": str(ADMIN_USER_ID)},
@@ -250,7 +256,9 @@ class TestDeviceTokenRefresh:
         assert claims["type"] == "scan_session"
         assert claims["exp"] > int(datetime.now(tz=UTC).timestamp())
 
-    def test_refresh_token_revoked_device(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_refresh_token_revoked_device(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         global_revocation_registry.revoke(DEVICE_ID)
         try:
             response = client.post(
@@ -262,7 +270,9 @@ class TestDeviceTokenRefresh:
         finally:
             global_revocation_registry.reset()
 
-    def test_refresh_token_invalid_credentials(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_refresh_token_invalid_credentials(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         response = client.post(
             "/api/kiosk/token",
             json={"device_id": str(DEVICE_ID), "device_token": "wrong-token"},
@@ -272,7 +282,9 @@ class TestDeviceTokenRefresh:
 
 
 class TestWebSocketSecurity:
-    def test_handshake_blocks_non_allowed_cidr(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_blocks_non_allowed_cidr(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         # Configure allowed CIDRs to block localhost
         mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
 
@@ -414,5 +426,3 @@ def test_is_ip_allowed() -> None:
     # Invalid CIDR string in list (should ignore and proceed/return False if none match)
     assert is_ip_allowed("127.0.0.1", ["invalid-cidr", "127.0.0.1/32"]) is True
     assert is_ip_allowed("127.0.0.1", ["invalid-cidr"]) is False
-
-

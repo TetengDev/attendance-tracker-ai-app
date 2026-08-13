@@ -119,7 +119,8 @@ class FakeEnrollmentService:
                 accepted_count=len(results),
                 rejected_count=0,
                 active_embeddings_count=self.active_embeddings_count,
-                enrollment_complete=self.active_embeddings_count >= MIN_ACTIVE_EMBEDDINGS_FOR_ENROLLMENT,
+                enrollment_complete=self.active_embeddings_count
+                >= MIN_ACTIVE_EMBEDDINGS_FOR_ENROLLMENT,
                 results=results,
             ),
             gallery_entries=(),
@@ -277,10 +278,13 @@ def test_guided_websocket_enforces_pose_progression(monkeypatch: MonkeyPatch) ->
     person_id = UUID("10000000-0000-0000-0000-000000000036")
     service = FakeEnrollmentService(active_embeddings_count=3)
 
-    with TestClient(_app(monkeypatch, service)) as client, client.websocket_connect(
-        f"/api/enrollment/{person_id}/guided?policy_version=privacy-v2",
-        headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
-    ) as websocket:
+    with (
+        TestClient(_app(monkeypatch, service)) as client,
+        client.websocket_connect(
+            f"/api/enrollment/{person_id}/guided?policy_version=privacy-v2",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+        ) as websocket,
+    ):
         sequence = websocket.receive_json()
         assert sequence["type"] == "pose_sequence"
         assert sequence["next_pose"] == "frontal"

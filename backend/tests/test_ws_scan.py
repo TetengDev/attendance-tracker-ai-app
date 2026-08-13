@@ -64,7 +64,9 @@ RAW_TOKEN = "secret-device-token"
 
 
 def _make_jwt(device_id: UUID = DEVICE_ID) -> str:
-    return jwt.encode({"sub": str(device_id), "type": "scan_session"}, SECRET_KEY, algorithm="HS256")
+    return jwt.encode(
+        {"sub": str(device_id), "type": "scan_session"}, SECRET_KEY, algorithm="HS256"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +87,7 @@ class MockSession:
             allowed_cidrs=["127.0.0.1/32"],
             settings_override={},
         )
-        self.person_a = Person(id=PERSON_A_ID, display_name="Alice")
+        self.person_a = Person(id=PERSON_A_ID, display_name="Alice", external_id="12345")
         self.person_b = Person(id=PERSON_B_ID, display_name="Bob")
         self.scan_session = ScanSession(
             id=SESSION_ID,
@@ -111,6 +113,7 @@ class MockSession:
                 version=1,
             )
         ]
+        self.should_find_person = True
         self.existing_event: AttendanceEvent | None = None
 
     async def get(self, model: type, identifier: Any) -> Any | None:
@@ -151,6 +154,8 @@ class MockSession:
             return MockResult(self.scan_session)
         if "FROM attendance_events" in sql:
             return MockResult(self.existing_event)
+        if "FROM people" in sql:
+            return MockResult(self.person_a if self.should_find_person else None)
 
         return MockResult(None)
 
@@ -244,7 +249,9 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
-    def test_handshake_succeeds_with_valid_jwt_even_if_token_hash_rotated(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_succeeds_with_valid_jwt_even_if_token_hash_rotated(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.token_hash = hash_admin_password("another-token")
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
@@ -257,7 +264,9 @@ class TestWebSocketHandshake:
             ready = ws.receive_json()
             assert ready["type"] == "ready"
 
-    def test_handshake_fixed_device_missing_location(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_fixed_device_missing_location(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.__dict__["location_id"] = None
         with client.websocket_connect("/api/kiosk/ws") as ws:
             ws.send_json(
@@ -271,11 +280,12 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
-    def test_handshake_blocks_non_allowed_cidr_by_x_forwarded_for(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_blocks_non_allowed_cidr_by_x_forwarded_for(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
         with client.websocket_connect(
-            "/api/kiosk/ws",
-            headers={"x-forwarded-for": "192.168.1.2"}
+            "/api/kiosk/ws", headers={"x-forwarded-for": "192.168.1.2"}
         ) as ws:
             ws.send_json(
                 {
@@ -288,11 +298,12 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
-    def test_handshake_allows_allowed_cidr_by_x_forwarded_for(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_allows_allowed_cidr_by_x_forwarded_for(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.allowed_cidrs = ["192.168.1.0/24"]
         with client.websocket_connect(
-            "/api/kiosk/ws",
-            headers={"x-forwarded-for": "192.168.1.5, 10.0.0.1"}
+            "/api/kiosk/ws", headers={"x-forwarded-for": "192.168.1.5, 10.0.0.1"}
         ) as ws:
             ws.send_json(
                 {
@@ -304,12 +315,11 @@ class TestWebSocketHandshake:
             ready = ws.receive_json()
             assert ready["type"] == "ready"
 
-    def test_handshake_blocks_non_allowed_cidr_by_x_real_ip(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_blocks_non_allowed_cidr_by_x_real_ip(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.allowed_cidrs = ["192.168.1.1/32"]
-        with client.websocket_connect(
-            "/api/kiosk/ws",
-            headers={"x-real-ip": "192.168.1.2"}
-        ) as ws:
+        with client.websocket_connect("/api/kiosk/ws", headers={"x-real-ip": "192.168.1.2"}) as ws:
             ws.send_json(
                 {
                     "type": "hello",
@@ -321,12 +331,11 @@ class TestWebSocketHandshake:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.DEVICE_REVOKED.value
 
-    def test_handshake_allows_allowed_cidr_by_x_real_ip(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_handshake_allows_allowed_cidr_by_x_real_ip(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         mock_session.device.allowed_cidrs = ["192.168.1.0/24"]
-        with client.websocket_connect(
-            "/api/kiosk/ws",
-            headers={"x-real-ip": "192.168.1.5"}
-        ) as ws:
+        with client.websocket_connect("/api/kiosk/ws", headers={"x-real-ip": "192.168.1.5"}) as ws:
             ws.send_json(
                 {
                     "type": "hello",
@@ -525,7 +534,9 @@ class TestWebSocketFrameBurst:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.LIVENESS_FAILED.value
 
-    def test_frame_burst_idempotency_cache(self, client: TestClient, mock_session: MockSession) -> None:
+    def test_frame_burst_idempotency_cache(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
         # Seed an existing successful event in mock session
         mock_session.existing_event = AttendanceEvent(
             idempotency_key="burst-dup-123",
@@ -615,3 +626,102 @@ class TestWebSocketFrameBurst:
             # Verify session rollback was called
             assert mock_session.rolled_back is True
 
+    def test_check_in_success(self, client: TestClient, mock_session: MockSession) -> None:
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "12345",
+                    "idempotency_key": "chk-idem-key",
+                    "direction": "in",
+                }
+            )
+            res = ws.receive_json()
+            assert res["type"] == "result"
+            assert res["status"] == "accepted"
+            assert res["person"]["id"] == str(PERSON_A_ID)
+            assert res["person"]["display_name"] == "Alice"
+            assert res["committed"] is True
+
+            # Verify AttendanceEvent was persisted
+            assert len(mock_session.added) == 1
+            event = mock_session.added[0]
+            assert isinstance(event, AttendanceEvent)
+            assert event.idempotency_key == "chk-idem-key"
+            assert event.person_id == PERSON_A_ID
+            assert event.outcome == AttendanceEventOutcome.ACCEPTED
+
+    def test_check_in_invalid_pin(self, client: TestClient, mock_session: MockSession) -> None:
+        mock_session.should_find_person = False
+
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "99999",
+                    "idempotency_key": "chk-idem-key-invalid",
+                    "direction": "in",
+                }
+            )
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["error"]["code"] == ErrorCode.UNKNOWN_FACE.value
+            assert "Invalid PIN or QR code" in err["error"]["message"]
+            assert len(mock_session.added) == 0
+
+    def test_check_in_backdated(self, client: TestClient, mock_session: MockSession) -> None:
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "12345",
+                    "idempotency_key": "chk-backdated-key",
+                    "direction": "in",
+                    "monotonic_offset_ms": 30000,  # 30 seconds ago
+                }
+            )
+            res = ws.receive_json()
+            assert res["type"] == "result"
+            assert res["status"] == "accepted"
+            assert res["committed"] is True
+
+            # Verify AttendanceEvent was backdated
+            assert len(mock_session.added) == 1
+            event = mock_session.added[0]
+            assert isinstance(event, AttendanceEvent)
+            assert event.idempotency_key == "chk-backdated-key"
+            assert event.was_backdated is True
+            assert event.monotonic_offset_ms == 30000
+            diff = event.server_received_at - event.occurred_at
+            assert abs(diff.total_seconds() - 30.0) < 1.0
+            assert event.client_captured_at == event.occurred_at

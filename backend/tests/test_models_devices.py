@@ -117,7 +117,9 @@ def test_device_heartbeat_tracks_mobile_health_and_retention() -> None:
         battery_pct=4,
         clock_skew_ms=1_500,
     )
-    constraints = {constraint.name for constraint in cast(Table, DeviceHeartbeat.__table__).constraints}
+    constraints = {
+        constraint.name for constraint in cast(Table, DeviceHeartbeat.__table__).constraints
+    }
 
     assert DEVICE_HEARTBEAT_RETENTION_DAYS == 7
     assert heartbeat.battery_pct == 4

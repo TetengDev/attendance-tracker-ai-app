@@ -295,9 +295,7 @@ def run_scan_pipeline(
     occurred_at, was_backdated = _compute_occurred_at(
         now,
         scan_input.monotonic_offset_ms,
-        max_offline_backdate_minutes=get_int_setting(
-            values, "scan.max_offline_backdate_minutes"
-        ),
+        max_offline_backdate_minutes=get_int_setting(values, "scan.max_offline_backdate_minutes"),
     )
 
     person_id: UUID | None = None
@@ -397,8 +395,7 @@ def run_scan_pipeline(
 
     gallery_stats = gallery.stats()
     candidates = [
-        (str(c.person_id), str(c.embedding_id), round(c.score, 4))
-        for c in match_result.candidates
+        (str(c.person_id), str(c.embedding_id), round(c.score, 4)) for c in match_result.candidates
     ]
     logger.info(
         "scan_pipeline person=%s outcome=%s top1=%.4f total=%.1fms gallery_size=%d gallery_version=%d",
@@ -432,4 +429,3 @@ def run_scan_pipeline(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-

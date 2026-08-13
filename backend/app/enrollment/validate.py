@@ -153,13 +153,7 @@ def variance_of_laplacian(bgr: np.ndarray, bbox: tuple[int, int, int, int] | Non
         + crop[:, :, 2].astype(np.float32) * 0.299
     )
     center = gray[1:-1, 1:-1]
-    laplacian = (
-        gray[:-2, 1:-1]
-        + gray[2:, 1:-1]
-        + gray[1:-1, :-2]
-        + gray[1:-1, 2:]
-        - (4.0 * center)
-    )
+    laplacian = gray[:-2, 1:-1] + gray[2:, 1:-1] + gray[1:-1, :-2] + gray[1:-1, 2:] - (4.0 * center)
     return float(np.var(laplacian))
 
 
@@ -216,7 +210,9 @@ def _thresholds(settings: Mapping[str, object]) -> _Thresholds:
 def _quality_score(metrics: _QualityMetrics, thresholds: _Thresholds) -> float:
     exposure_midpoint = (thresholds.luma_min + thresholds.luma_max) / 2.0
     exposure_half_range = max((thresholds.luma_max - thresholds.luma_min) / 2.0, 1.0)
-    exposure_score = 1.0 - min(abs(metrics.brightness - exposure_midpoint) / exposure_half_range, 1.0)
+    exposure_score = 1.0 - min(
+        abs(metrics.brightness - exposure_midpoint) / exposure_half_range, 1.0
+    )
     component_scores = (
         _ratio_score(metrics.det_score, thresholds.det_score_min),
         _ratio_score(metrics.bbox_area_pct, thresholds.min_bbox_area_pct),

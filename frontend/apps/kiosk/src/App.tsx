@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScanLoop } from "./scan/useScanLoop";
 import { apiBaseUrl } from "@attendance/api-client";
+import { enqueueOfflineScan, getOfflineScans, removeOfflineScan, getOfflineQueueDepth } from "./utils/offlineQueue";
 import type { FrameBurst, ServerMessage, Result, ErrorMessage, TokenRotation } from "@attendance/protocol";
 
 // Configuration for local dev seed device
 const SEED_DEVICE_ID = "ee2872c4-f685-4843-b64d-8b29edfd086a";
 const SEED_DEVICE_TOKEN = "seed-device-token";
-const SEED_ADMIN_ID = "3db96e05-898f-4555-b869-3a85cece722e";
+const SEED_ADMIN_ID = "14d75b41-d558-4a73-9369-93f32ef86a70";
 
 // Browser Web Audio synthesizer helper for alerts
 const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) => {
@@ -57,10 +58,29 @@ export function App() {
   const [gatingStatus, setGatingStatus] = useState<string | null>("Initialize camera feed...");
   const [scanResult, setScanResult] = useState<Result | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanInfo, setScanInfo] = useState<string | null>(null);
   const [isMatching, setIsMatching] = useState(false);
+  const [pinValue, setPinValue] = useState("");
   const [relaxedGating, setRelaxedGating] = useState(true);
-
   const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
+
+  const [queueDepth, setQueueDepth] = useState(0);
+
+  useEffect(() => {
+    getOfflineQueueDepth().then(setQueueDepth).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (queueDepth > 0) {
+        e.preventDefault();
+        e.returnValue = "Warning: You have unsent offline scans. If you close this page, they might be lost.";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [queueDepth]);
 
   // Enrollment state
   const [enrollName, setEnrollName] = useState("");
@@ -226,13 +246,14 @@ export function App() {
           logMessage("WebSocket handshake success: ready for scans.", "info");
           setGatingStatus("Ready for face scan");
           setIsMatching(false);
+          replayOfflineScans();
         } else if (msg.type === "checking") {
           setGatingStatus("Matching embedding...");
           setIsMatching(true);
         } else if (msg.type === "result") {
           setIsMatching(false);
           const result = msg as Result;
-          if (result.status === "match" && result.person) {
+          if (result.status === "accepted" && result.person) {
             logMessage(`Match result: face matched successfully (UUID: ${result.person.id})`, "info");
             playBeep(880, "sine", 0.12);
             setTimeout(() => playBeep(1100, "sine", 0.15), 80);
@@ -254,6 +275,20 @@ export function App() {
         } else if (msg.type === "error") {
           setIsMatching(false);
           const err = msg as ErrorMessage;
+          
+          if (err.error.code === "RATE_LIMITED") {
+            // Silently ignore device-level burst rate limits to avoid annoying the user
+            return;
+          }
+          
+          if (err.error.code === "COOLDOWN_ACTIVE") {
+            // Treat cooldown as a friendly reminder rather than an error
+            logMessage(`Match result: You are already checked in.`, "info");
+            setScanInfo("You are already checked in.");
+            setTimeout(() => setScanInfo(null), 3000);
+            return;
+          }
+
           logMessage(`Scan error event received: ${err.error.message} (code: ${err.error.code})`, "error");
           if (err.error.details) {
             logMessage(`Error Details: ${JSON.stringify(err.error.details)}`, "error");
@@ -351,6 +386,92 @@ export function App() {
     onGatingPassed: () => setGatingStatus("Perfect! Checking face..."),
     onDetected: () => playBeep(520, "sine", 0.05),
   });
+
+  // Replay queued offline scans
+  const replayOfflineScans = async () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        const scans = await getOfflineScans();
+        if (scans.length === 0) return;
+        logMessage(`Replaying ${scans.length} queued offline scans...`, "info");
+        for (const scan of scans) {
+          let elapsed = performance.now() - scan.captured_at_perf;
+          if (elapsed < 0 || performance.now() < scan.captured_at_perf) {
+            // Browser reloaded: absolute wall clock fallback
+            elapsed = Date.now() - new Date(scan.occurred_at_iso).getTime();
+          }
+          const finalOffset = Math.max(0, Math.round(elapsed));
+          const payload = {
+            type: "check_in",
+            external_id: scan.external_id,
+            idempotency_key: scan.idempotency_key,
+            direction: scan.direction,
+            monotonic_offset_ms: finalOffset
+          };
+          wsRef.current.send(JSON.stringify(payload));
+          await removeOfflineScan(scan.idempotency_key);
+        }
+        setQueueDepth(await getOfflineQueueDepth());
+        logMessage("All offline scans replayed successfully.", "info");
+      } catch (err) {
+        logMessage(`Failed to replay offline scans: ${err}`, "error");
+      }
+    }
+  };
+
+  // PIN / QR Fallback scan functionality
+  const sendCheckIn = async (externalId: string) => {
+    const idempotencyKey = crypto.randomUUID();
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const payload = {
+        type: "check_in",
+        external_id: externalId,
+        idempotency_key: idempotencyKey,
+        direction: "in",
+        monotonic_offset_ms: 0
+      };
+      logMessage(`Sending manual check-in request (external_id: ${externalId}, idempotency_key: ${idempotencyKey})`, "info");
+      setIsMatching(true);
+      setScanError(null);
+      wsRef.current.send(JSON.stringify(payload));
+    } else {
+      logMessage(`Kiosk is offline. Queuing check-in request locally (external_id: ${externalId}, idempotency_key: ${idempotencyKey})`, "info");
+      try {
+        await enqueueOfflineScan({
+          idempotency_key: idempotencyKey,
+          external_id: externalId,
+          direction: "in"
+        });
+        setQueueDepth(await getOfflineQueueDepth());
+        setScanInfo("Offline: Scan queued in local database.");
+        setTimeout(() => setScanInfo(null), 3000);
+      } catch (err) {
+        logMessage(`Failed to queue offline scan: ${err}`, "error");
+        setScanError("Failed to store check-in offline.");
+        setTimeout(() => setScanError(null), 4000);
+      }
+    }
+  };
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinValue.trim()) {
+      sendCheckIn(pinValue.trim());
+      setPinValue("");
+    }
+  };
+
+  const handleKeypadPress = (val: string) => {
+    setPinValue((prev) => prev + val);
+  };
+
+  const handleKeypadClear = () => {
+    setPinValue("");
+  };
+
+  const handleKeypadBackspace = () => {
+    setPinValue((prev) => prev.slice(0, -1));
+  };
 
   // Local Dev Enrollment Functionality
   const enrollFace = async () => {
@@ -583,6 +704,16 @@ export function App() {
           <span className="font-semibold tracking-tight text-lg">Aegis Biometrics</span>
         </div>
         <div className="flex items-center gap-4">
+          {/* Offline Queue Depth Badge */}
+          {queueDepth > 0 && (
+            <div className="flex items-center gap-2 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 px-3.5 py-1.5 text-xs font-semibold animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.1)]">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{queueDepth} Offline scan{queueDepth === 1 ? "" : "s"} queued</span>
+            </div>
+          )}
+
           {/* WS Status Indicator */}
           <div className="flex items-center gap-2 rounded-full bg-white/5 px-3.5 py-1 text-xs border border-white/10">
             {wsStatus === "connected" ? (
@@ -673,6 +804,26 @@ export function App() {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="h-56 w-56 rounded-full border-2 border-dashed border-cyan-400/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
                   <div className="h-48 w-48 rounded-full border border-cyan-400/20" />
+                </div>
+              </div>
+            )}
+
+            {/* Flash Effect on Capture */}
+            {isMatching && (
+              <div className="absolute inset-0 bg-white pointer-events-none animate-camera-flash z-10" />
+            )}
+
+            {/* Processing Identity Overlay */}
+            {isMatching && (
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center pointer-events-none z-20">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative h-16 w-16">
+                    <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20" />
+                    <div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin" />
+                  </div>
+                  <span className="text-cyan-300 font-mono text-sm tracking-[0.2em] font-semibold animate-pulse shadow-black drop-shadow-md">
+                    PROCESSING BIOMETRICS
+                  </span>
                 </div>
               </div>
             )}
@@ -797,6 +948,14 @@ export function App() {
                 <span className="text-red-200 text-sm font-medium">{scanError}</span>
               </div>
             )}
+
+            {/* Friendly Info Notification */}
+            {scanInfo && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-cyan-950/90 border border-cyan-500/30 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
+                <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-cyan-200 text-sm font-medium">{scanInfo}</span>
+              </div>
+            )}
           </div>
 
           {/* Real-time scanning ticker / Gating feedback */}
@@ -812,7 +971,80 @@ export function App() {
               </button>
             )}
           </div>
-        </div>
+          {/* PIN / QR Code Fallback Card */}
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-300">PIN / QR Code Fallback</h2>
+                  <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase font-mono">Accessibility</span>
+                </div>
+                
+                <p className="text-xs text-zinc-400">
+                  Type your ID/PIN or position your QR code in front of the camera (simulated via text input).
+                </p>
+
+                {/* Input with inline submit */}
+                <form onSubmit={handlePinSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter your PIN or Scan QR Code..."
+                    value={pinValue}
+                    onChange={(e) => setPinValue(e.target.value)}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="flex-1 rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isMatching || !pinValue.trim() || wsStatus !== "connected"}
+                    className="bg-cyan-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl hover:bg-cyan-400 transition-all text-sm shadow-lg shadow-cyan-500/10"
+                  >
+                    Check In
+                  </button>
+                </form>
+
+                {/* Tactile Touchscreen Keypad */}
+                <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto w-full pt-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => handleKeypadPress(num.toString())}
+                      disabled={isMatching || wsStatus !== "connected"}
+                      className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 hover:border-white/10 active:scale-95 transition-all text-sm select-none"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleKeypadClear}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-red-400 hover:text-red-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress("0")}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleKeypadBackspace}
+                    disabled={isMatching || wsStatus !== "connected"}
+                    className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm flex items-center justify-center select-none"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
         {/* Right Side: Setup instructions and Dev Tools */}
         {import.meta.env.DEV && (

@@ -36,16 +36,22 @@ def test_active_consent_guard_requires_current_policy_version() -> None:
         granted_at=now - timedelta(days=1),
     )
 
-    assert active_biometric_consent_for_policy(
-        [old_policy, current_policy],
-        "privacy-v2",
-        as_of=now,
-    ) is current_policy
-    assert require_active_biometric_consent(
-        [old_policy, current_policy],
-        "privacy-v2",
-        as_of=now,
-    ) is current_policy
+    assert (
+        active_biometric_consent_for_policy(
+            [old_policy, current_policy],
+            "privacy-v2",
+            as_of=now,
+        )
+        is current_policy
+    )
+    assert (
+        require_active_biometric_consent(
+            [old_policy, current_policy],
+            "privacy-v2",
+            as_of=now,
+        )
+        is current_policy
+    )
 
 
 def test_revoked_consent_is_not_active() -> None:
@@ -88,8 +94,12 @@ def test_biometric_models_encode_encrypted_payload_columns() -> None:
 
 
 def test_biometric_models_encode_required_constraints() -> None:
-    consent_constraints = {constraint.name for constraint in cast(Table, Consent.__table__).constraints}
-    asset_constraints = {constraint.name for constraint in cast(Table, EnrollmentAsset.__table__).constraints}
+    consent_constraints = {
+        constraint.name for constraint in cast(Table, Consent.__table__).constraints
+    }
+    asset_constraints = {
+        constraint.name for constraint in cast(Table, EnrollmentAsset.__table__).constraints
+    }
     embedding_constraints = {
         constraint.name for constraint in cast(Table, FaceEmbedding.__table__).constraints
     }

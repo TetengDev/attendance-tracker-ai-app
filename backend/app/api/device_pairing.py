@@ -41,6 +41,7 @@ DEVICE_PAIRED_FIELDS = ("id", "token_display_prefix", "pairing_code_expires_at")
 
 # ── Schemas ─────────────────────────────────────────────────────────────────
 
+
 class PairRequest(StrictSchema):
     pairing_code: str
 
@@ -65,6 +66,7 @@ class PairingCodeResponse(StrictSchema):
 
 
 # ── Admin Routes ────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/api/devices/{device_id}/pairing-code",
@@ -109,6 +111,7 @@ async def generate_device_pairing_code(
 
 
 # ── Kiosk Routes ────────────────────────────────────────────────────────────
+
 
 @router.post("/api/kiosk/pair", response_model=PairResponse)
 async def pair_device(
