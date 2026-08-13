@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScanLoop } from "./scan/useScanLoop";
 import { apiBaseUrl } from "@attendance/api-client";
+import { enqueueOfflineScan, getOfflineScans, removeOfflineScan, getOfflineQueueDepth } from "./utils/offlineQueue";
 import type { FrameBurst, ServerMessage, Result, ErrorMessage, TokenRotation } from "@attendance/protocol";
 
 // Configuration for local dev seed device
@@ -62,6 +63,24 @@ export function App() {
   const [pinValue, setPinValue] = useState("");
   const [relaxedGating, setRelaxedGating] = useState(true);
   const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
+
+  const [queueDepth, setQueueDepth] = useState(0);
+
+  useEffect(() => {
+    getOfflineQueueDepth().then(setQueueDepth).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (queueDepth > 0) {
+        e.preventDefault();
+        e.returnValue = "Warning: You have unsent offline scans. If you close this page, they might be lost.";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [queueDepth]);
 
   // Enrollment state
   const [enrollName, setEnrollName] = useState("");
@@ -227,6 +246,7 @@ export function App() {
           logMessage("WebSocket handshake success: ready for scans.", "info");
           setGatingStatus("Ready for face scan");
           setIsMatching(false);
+          replayOfflineScans();
         } else if (msg.type === "checking") {
           setGatingStatus("Matching embedding...");
           setIsMatching(true);
@@ -367,23 +387,64 @@ export function App() {
     onDetected: () => playBeep(520, "sine", 0.05),
   });
 
-  // PIN / QR Fallback scan functionality
-  const sendCheckIn = (externalId: string) => {
+  // Replay queued offline scans
+  const replayOfflineScans = async () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const idempotencyKey = crypto.randomUUID();
+      try {
+        const scans = await getOfflineScans();
+        if (scans.length === 0) return;
+        logMessage(`Replaying ${scans.length} queued offline scans...`, "info");
+        for (const scan of scans) {
+          const elapsed = performance.now() - scan.captured_at_perf;
+          const payload = {
+            type: "check_in",
+            external_id: scan.external_id,
+            idempotency_key: scan.idempotency_key,
+            direction: scan.direction,
+            monotonic_offset_ms: Math.round(elapsed)
+          };
+          wsRef.current.send(JSON.stringify(payload));
+          await removeOfflineScan(scan.idempotency_key);
+        }
+        setQueueDepth(await getOfflineQueueDepth());
+        logMessage("All offline scans replayed successfully.", "info");
+      } catch (err) {
+        logMessage(`Failed to replay offline scans: ${err}`, "error");
+      }
+    }
+  };
+
+  // PIN / QR Fallback scan functionality
+  const sendCheckIn = async (externalId: string) => {
+    const idempotencyKey = crypto.randomUUID();
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const payload = {
         type: "check_in",
         external_id: externalId,
         idempotency_key: idempotencyKey,
-        direction: "in"
+        direction: "in",
+        monotonic_offset_ms: 0
       };
       logMessage(`Sending manual check-in request (external_id: ${externalId}, idempotency_key: ${idempotencyKey})`, "info");
       setIsMatching(true);
       setScanError(null);
       wsRef.current.send(JSON.stringify(payload));
     } else {
-      logMessage("Check-in failed: WebSocket is not connected.", "error");
-      setScanError("Kiosk is disconnected. Please connect first.");
+      logMessage(`Kiosk is offline. Queuing check-in request locally (external_id: ${externalId}, idempotency_key: ${idempotencyKey})`, "info");
+      try {
+        await enqueueOfflineScan({
+          idempotency_key: idempotencyKey,
+          external_id: externalId,
+          direction: "in"
+        });
+        setQueueDepth(await getOfflineQueueDepth());
+        setScanInfo("Offline: Scan queued in local database.");
+        setTimeout(() => setScanInfo(null), 3000);
+      } catch (err) {
+        logMessage(`Failed to queue offline scan: ${err}`, "error");
+        setScanError("Failed to store check-in offline.");
+        setTimeout(() => setScanError(null), 4000);
+      }
     }
   };
 
@@ -638,6 +699,16 @@ export function App() {
           <span className="font-semibold tracking-tight text-lg">Aegis Biometrics</span>
         </div>
         <div className="flex items-center gap-4">
+          {/* Offline Queue Depth Badge */}
+          {queueDepth > 0 && (
+            <div className="flex items-center gap-2 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 px-3.5 py-1.5 text-xs font-semibold animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.1)]">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{queueDepth} Offline scan{queueDepth === 1 ? "" : "s"} queued</span>
+            </div>
+          )}
+
           {/* WS Status Indicator */}
           <div className="flex items-center gap-2 rounded-full bg-white/5 px-3.5 py-1 text-xs border border-white/10">
             {wsStatus === "connected" ? (

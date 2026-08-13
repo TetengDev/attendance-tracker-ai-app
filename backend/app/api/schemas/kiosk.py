@@ -83,6 +83,7 @@ class CheckIn(StrictModel):
     idempotency_key: str
     external_id: str
     direction: str = "in"
+    monotonic_offset_ms: int = Field(default=0, ge=0)
 
 
 ClientMessage = Hello | Heartbeat | FrameBurst | CheckIn

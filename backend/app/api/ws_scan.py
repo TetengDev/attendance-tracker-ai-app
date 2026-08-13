@@ -533,6 +533,13 @@ async def kiosk_websocket_endpoint(
 
                     # Persist event
                     now = datetime.now(tz=UTC)
+                    from backend.app.scan.pipeline import _compute_occurred_at
+                    max_backdate = resolved_settings.settings.get("scan.max_offline_backdate_minutes", 240)
+                    occurred_at, was_backdated = _compute_occurred_at(
+                        now,
+                        checkin.monotonic_offset_ms,
+                        max_offline_backdate_minutes=int(max_backdate)
+                    )
                     event = AttendanceEvent(
                         idempotency_key=checkin.idempotency_key,
                         person_id=person.id,
@@ -544,11 +551,11 @@ async def kiosk_websocket_endpoint(
                         location_source=AttendanceLocationSource(
                             attribution.location_source.value
                         ),
-                        client_captured_at=now,
+                        client_captured_at=occurred_at,
                         server_received_at=now,
-                        occurred_at=now,
-                        monotonic_offset_ms=0,
-                        was_backdated=False,
+                        occurred_at=occurred_at,
+                        monotonic_offset_ms=checkin.monotonic_offset_ms,
+                        was_backdated=was_backdated,
                         top1_score=None,
                         top2_other_person_score=None,
                         event_metadata={"method": "pin_or_qr"},

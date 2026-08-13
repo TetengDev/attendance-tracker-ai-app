@@ -684,3 +684,42 @@ class TestWebSocketFrameBurst:
             assert err["error"]["code"] == ErrorCode.UNKNOWN_FACE.value
             assert "Invalid PIN or QR code" in err["error"]["message"]
             assert len(mock_session.added) == 0
+
+    def test_check_in_backdated(
+        self, client: TestClient, mock_session: MockSession
+    ) -> None:
+        with client.websocket_connect("/api/kiosk/ws") as ws:
+            ws.send_json(
+                {
+                    "type": "hello",
+                    "device_token_jwt": _make_jwt(),
+                    "app_version": "1.0.0",
+                }
+            )
+            ws.receive_json()  # ready
+            ws.receive_json()  # settings_push
+
+            ws.send_json(
+                {
+                    "type": "check_in",
+                    "external_id": "12345",
+                    "idempotency_key": "chk-backdated-key",
+                    "direction": "in",
+                    "monotonic_offset_ms": 30000,  # 30 seconds ago
+                }
+            )
+            res = ws.receive_json()
+            assert res["type"] == "result"
+            assert res["status"] == "accepted"
+            assert res["committed"] is True
+
+            # Verify AttendanceEvent was backdated
+            assert len(mock_session.added) == 1
+            event = mock_session.added[0]
+            assert isinstance(event, AttendanceEvent)
+            assert event.idempotency_key == "chk-backdated-key"
+            assert event.was_backdated is True
+            assert event.monotonic_offset_ms == 30000
+            diff = event.server_received_at - event.occurred_at
+            assert abs(diff.total_seconds() - 30.0) < 1.0
+            assert event.client_captured_at == event.occurred_at
