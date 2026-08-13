@@ -644,98 +644,145 @@ function DeviceRegistrationModal({ isOpen, onClose, onSuccess }: { isOpen: boole
 const devicesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/devices",
-  component: function Devices() {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    
-    const { data: devices, isLoading, isError, refetch } = useQuery({
-      queryKey: ["devices"],
-      queryFn: async () => {
-        const res = await fetch(`${apiBaseUrl}/api/devices?limit=100&offset=0`, {
-          headers: {
-            "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70"
-          }
-        });
-        if (!res.ok) throw new Error("Failed to fetch devices");
-        return res.json() as Promise<any[]>;
-      }
-    });
+    component: function Devices() {
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [showCodeDetails, setShowCodeDetails] = useState<{ id: string; code: string } | null>(null);
+      const [isGeneratingCode, setIsGeneratingCode] = useState<string | null>(null);
+      
+      const { data: devices, isLoading, isError, refetch } = useQuery({
+        queryKey: ["devices"],
+        queryFn: async () => {
+          const res = await fetch(`${apiBaseUrl}/api/devices?limit=100&offset=0`, {
+            headers: {
+              "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70"
+            }
+          });
+          if (!res.ok) throw new Error("Failed to fetch devices");
+          return res.json() as Promise<any[]>;
+        }
+      });
 
-    return (
-      <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <DeviceRegistrationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); refetch(); }} />
-        
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Kiosks & Devices</h1>
-            <p className="text-zinc-500 mt-1">Monitor connected physical devices and attendance kiosks.</p>
-          </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20">
-            + Register Device
-          </button>
-        </div>
-        
-        <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-          {isLoading ? (
-            <div className="p-12 flex justify-center">
-              <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+      const handleShowCode = async (deviceId: string) => {
+        setIsGeneratingCode(deviceId);
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/devices/${deviceId}/pairing-code`, {
+            method: "POST",
+            headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+          });
+          if (!res.ok) throw new Error("Failed to generate pairing code");
+          const data = await res.json();
+          setShowCodeDetails({ id: deviceId, code: data.pairing_code });
+        } catch (err: any) {
+          alert(err.message || "Failed to generate pairing code");
+        } finally {
+          setIsGeneratingCode(null);
+        }
+      };
+
+      return (
+        <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <DeviceRegistrationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); refetch(); }} />
+          
+          {showCodeDetails && (
+            <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up p-8 text-center">
+                <div className="w-16 h-16 bg-cyan-100 text-cyan-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-zinc-900 mb-2">Device Pairing Code</h3>
+                <p className="text-zinc-500 mb-6 font-medium text-sm">Enter this pairing code on the physical device to pair it:</p>
+                <div className="bg-zinc-100 text-zinc-900 font-mono text-4xl tracking-[0.2em] py-4 rounded-xl font-bold select-all">
+                  {showCodeDetails.code}
+                </div>
+                <p className="text-xs text-zinc-400 mt-4">This code expires in 15 minutes.</p>
+                <button 
+                  onClick={() => setShowCodeDetails(null)} 
+                  className="w-full mt-6 bg-zinc-900 text-white py-3 rounded-xl font-medium hover:bg-zinc-800 transition-colors shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
             </div>
-          ) : isError ? (
-            <div className="p-12 text-center text-red-500 font-medium">Error loading devices.</div>
-          ) : devices?.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500">No registered devices found.</div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
-                <tr>
-                  <th className="px-6 py-4">ID Prefix</th>
-                  <th className="px-6 py-4">Form Factor</th>
-                  <th className="px-6 py-4">Mode</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {devices?.map((d) => (
-                  <tr key={d.id} className="hover:bg-zinc-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-zinc-900 font-mono">{d.id.substring(0, 8)}...</div>
-                      <div className="text-xs text-zinc-500 mt-0.5">Token: {d.token_display_prefix === 'unpaired' ? 'Unpaired' : `***${d.token_display_prefix}`}</div>
-                    </td>
-                    <td className="px-6 py-4 capitalize font-medium text-zinc-700">
-                      {d.form_factor}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2 py-1 rounded text-xs uppercase tracking-wider font-semibold">
-                        {d.mode}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {d.token_display_prefix !== 'unpaired' ? (
-                        <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold uppercase tracking-wider">
-                          <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Paired
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5 text-amber-500 text-xs font-semibold uppercase tracking-wider">
-                          <span className="h-1.5 w-1.5 bg-amber-400 rounded-full"></span> Unpaired
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {d.token_display_prefix === 'unpaired' && (
-                        <button className="text-cyan-600 hover:text-cyan-700 font-medium text-sm">
-                          Show Code
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
+
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Kiosks & Devices</h1>
+              <p className="text-zinc-500 mt-1">Monitor connected physical devices and attendance kiosks.</p>
+            </div>
+            <button onClick={() => setIsModalOpen(true)} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20">
+              + Register Device
+            </button>
+          </div>
+          
+          <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+            {isLoading ? (
+              <div className="p-12 flex justify-center">
+                <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+              </div>
+            ) : isError ? (
+              <div className="p-12 text-center text-red-500 font-medium">Error loading devices.</div>
+            ) : devices?.length === 0 ? (
+              <div className="p-12 text-center text-zinc-500">No registered devices found.</div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
+                  <tr>
+                    <th className="px-6 py-4">ID Prefix</th>
+                    <th className="px-6 py-4">Form Factor</th>
+                    <th className="px-6 py-4">Mode</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {devices?.map((d) => (
+                    <tr key={d.id} className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-zinc-900 font-mono">{d.id.substring(0, 8)}...</div>
+                        <div className="text-xs text-zinc-500 mt-0.5">Token: {d.token_display_prefix === 'unpaired' ? 'Unpaired' : `***${d.token_display_prefix}`}</div>
+                      </td>
+                      <td className="px-6 py-4 capitalize font-medium text-zinc-700">
+                        {d.form_factor}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2 py-1 rounded text-xs uppercase tracking-wider font-semibold">
+                          {d.mode}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {d.token_display_prefix !== 'unpaired' ? (
+                          <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Paired
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-amber-500 text-xs font-semibold uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 bg-amber-400 rounded-full"></span> Unpaired
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {d.token_display_prefix === 'unpaired' && (
+                          <button 
+                            onClick={() => handleShowCode(d.id)}
+                            disabled={isGeneratingCode === d.id}
+                            className="text-cyan-600 hover:text-cyan-700 disabled:text-zinc-400 font-medium text-sm"
+                          >
+                            {isGeneratingCode === d.id ? "Generating..." : "Show Code"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 });
 
 const CATEGORY_META: Record<string, { label: string; icon: string; description: string }> = {

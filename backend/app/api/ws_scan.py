@@ -352,8 +352,8 @@ async def kiosk_websocket_endpoint(
         device_id = device.id
         # 4. Message loop
         while True:
-            payload = await websocket.receive_json()
             try:
+                payload = await websocket.receive_json()
                 # Refresh/bind the device instance to ensure it's not expired from previous commits/rollbacks
                 device_db = await session.get(Device, device_id)
                 if device_db is None:
@@ -901,6 +901,18 @@ async def kiosk_websocket_endpoint(
                                 ),
                             ).model_dump(mode="json")
                         )
+                else:
+                    await websocket.send_json(
+                        ErrorMessage(
+                            type=ServerMessageType.ERROR,
+                            error=ErrorBody(
+                                code=ErrorCode.VALIDATION_ERROR,
+                                message=f"Unsupported or missing message type: {msg_type}",
+                            ),
+                        ).model_dump(mode="json")
+                    )
+            except WebSocketDisconnect:
+                raise
             except ValidationError as exc:
                 await websocket.send_json(
                     ErrorMessage(

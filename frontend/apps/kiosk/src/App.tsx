@@ -395,13 +395,18 @@ export function App() {
         if (scans.length === 0) return;
         logMessage(`Replaying ${scans.length} queued offline scans...`, "info");
         for (const scan of scans) {
-          const elapsed = performance.now() - scan.captured_at_perf;
+          let elapsed = performance.now() - scan.captured_at_perf;
+          if (elapsed < 0 || performance.now() < scan.captured_at_perf) {
+            // Browser reloaded: absolute wall clock fallback
+            elapsed = Date.now() - new Date(scan.occurred_at_iso).getTime();
+          }
+          const finalOffset = Math.max(0, Math.round(elapsed));
           const payload = {
             type: "check_in",
             external_id: scan.external_id,
             idempotency_key: scan.idempotency_key,
             direction: scan.direction,
-            monotonic_offset_ms: Math.round(elapsed)
+            monotonic_offset_ms: finalOffset
           };
           wsRef.current.send(JSON.stringify(payload));
           await removeOfflineScan(scan.idempotency_key);
