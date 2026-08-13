@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.app.api.consents import router as consents_router
+from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.device_pairing import router as device_pairing_router
 from backend.app.api.devices import router as devices_router
-from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.enrollment import router as enrollment_router
 from backend.app.api.groups import router as groups_router
 from backend.app.api.health import router as health_router
@@ -39,11 +39,11 @@ def setup_file_logging() -> None:
         when="H",
         interval=3,
         backupCount=4,  # Keep 12 hours of logs by default
-        encoding="utf-8"
+        encoding="utf-8",
     )
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.DEBUG)
@@ -51,11 +51,13 @@ def setup_file_logging() -> None:
     root_logger = logging.getLogger()
     if not any(isinstance(h, TimedRotatingFileHandler) for h in root_logger.handlers):
         # Remove any existing file handlers (useful during hot reloads)
-        root_logger.handlers = [h for h in root_logger.handlers if not isinstance(h, BaseRotatingHandler)]
+        root_logger.handlers = [
+            h for h in root_logger.handlers if not isinstance(h, BaseRotatingHandler)
+        ]
         root_logger.addHandler(file_handler)
         if root_logger.level > logging.DEBUG:
             root_logger.setLevel(logging.DEBUG)
-    
+
     # Ensure our specific app logger is at DEBUG
     logging.getLogger("attendance_tracker").setLevel(logging.DEBUG)
     logging.getLogger("backend").setLevel(logging.DEBUG)

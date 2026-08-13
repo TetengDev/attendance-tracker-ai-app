@@ -202,8 +202,12 @@ class EnrollmentService:
         return EnrollmentCommit(
             response=EnrollmentCommitResponse(
                 person_id=person_id,
-                accepted_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED),
-                rejected_count=sum(1 for result in results if result.status == EnrollmentValidationStatus.REJECTED),
+                accepted_count=sum(
+                    1 for result in results if result.status == EnrollmentValidationStatus.ACCEPTED
+                ),
+                rejected_count=sum(
+                    1 for result in results if result.status == EnrollmentValidationStatus.REJECTED
+                ),
                 active_embeddings_count=active_count,
                 enrollment_complete=enrollment_complete(active_count),
                 results=results,
@@ -240,10 +244,11 @@ class EnrollmentService:
             )
 
         liveness = face_engine.liveness(bgr, validation.detection.bbox)
-        
+
         # Check liveness mode setting (MONITOR/OFF skips validation block)
         liveness_mode = "monitor"
         from backend.app.models.settings import Setting
+
         stmt = select(Setting.value).where(Setting.key == "liveness.mode")
         res = await session.execute(stmt)
         val = res.scalar_one_or_none()
@@ -322,6 +327,7 @@ class EnrollmentService:
             import logging
 
             from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
+
             payload = EncryptedPayload(
                 version=face_embedding.envelope_version,
                 payload_alg=face_embedding.payload_alg,
@@ -334,12 +340,17 @@ class EnrollmentService:
             )
             aad = f"face-embedding:{person_id}:{asset.id}".encode()
             decrypted_vector = decrypt_embedding(payload, aad=aad)
-            
+
             # cosine similarity
             similarity = float(np.dot(decrypted_vector, embedding.vector))
             if similarity < 0.95:
-                logging.getLogger(__name__).error("Enrollment self-test failed: cosine similarity %.3f < 0.95", similarity)
-                raise CrudError(CrudErrorCode.INVALID_INPUT, "Enrollment self-test failed. Internal storage error.")
+                logging.getLogger(__name__).error(
+                    "Enrollment self-test failed: cosine similarity %.3f < 0.95", similarity
+                )
+                raise CrudError(
+                    CrudErrorCode.INVALID_INPUT,
+                    "Enrollment self-test failed. Internal storage error.",
+                )
         except Exception as exc:
             if isinstance(exc, CrudError):
                 raise
@@ -372,7 +383,9 @@ class EnrollmentService:
     ) -> Person:
         person = (
             await session.execute(
-                scoped_people_query(admin_user, business_date=business_date).where(Person.id == person_id)
+                scoped_people_query(admin_user, business_date=business_date).where(
+                    Person.id == person_id
+                )
             )
         ).scalar_one_or_none()
         if person is None:
@@ -500,7 +513,11 @@ async def probe_enrollment_identity(
     except ValueError as exc:
         raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, str(exc))) from exc
     if not validation.passed or validation.detection is None:
-        rejection = validation.rejection.message if validation.rejection else "Probe image failed validation."
+        rejection = (
+            validation.rejection.message
+            if validation.rejection
+            else "Probe image failed validation."
+        )
         raise translate_crud_error(CrudError(CrudErrorCode.INVALID_INPUT, rejection))
 
     liveness = face_engine.liveness(bgr, validation.detection.bbox)
@@ -527,11 +544,17 @@ async def _commit_uploads(
     audit_action: str,
 ) -> EnrollmentCommitResponse:
     try:
-        prepared_uploads = [await _candidate_from_upload(file, default_pose=default_pose) for file in files]
-        rejected_uploads = [
-            prepared.result for prepared in prepared_uploads if isinstance(prepared, RejectedUploadCandidate)
+        prepared_uploads = [
+            await _candidate_from_upload(file, default_pose=default_pose) for file in files
         ]
-        candidates = [prepared for prepared in prepared_uploads if isinstance(prepared, ImageCandidate)]
+        rejected_uploads = [
+            prepared.result
+            for prepared in prepared_uploads
+            if isinstance(prepared, RejectedUploadCandidate)
+        ]
+        candidates = [
+            prepared for prepared in prepared_uploads if isinstance(prepared, ImageCandidate)
+        ]
         commit = await service.prepare_commit(
             session,
             admin_user,

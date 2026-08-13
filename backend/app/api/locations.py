@@ -69,7 +69,9 @@ class LocationsService:
         await session.flush()
         return location
 
-    async def update(self, session: AsyncSession, location: Location, payload: LocationUpdate) -> Location:
+    async def update(
+        self, session: AsyncSession, location: Location, payload: LocationUpdate
+    ) -> Location:
         apply_updates(location, payload.model_dump(exclude_unset=True))
         await session.flush()
         return location

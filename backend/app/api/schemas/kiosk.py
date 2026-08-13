@@ -146,4 +146,13 @@ class TokenRotation(StrictModel):
     device_token: str
 
 
-ServerMessage = Ready | Detected | Checking | Result | SettingsPush | Backpressure | ErrorMessage | TokenRotation
+ServerMessage = (
+    Ready
+    | Detected
+    | Checking
+    | Result
+    | SettingsPush
+    | Backpressure
+    | ErrorMessage
+    | TokenRotation
+)

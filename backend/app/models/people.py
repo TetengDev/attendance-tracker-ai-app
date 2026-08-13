@@ -54,7 +54,10 @@ class Person(Base):
     __table_args__ = (
         UniqueConstraint("external_id", name="uq_people_external_id"),
         CheckConstraint("display_name <> ''", name="display_name_non_empty"),
-        CheckConstraint("merged_into_person_id IS NULL OR merged_into_person_id <> id", name="person_merge_not_self"),
+        CheckConstraint(
+            "merged_into_person_id IS NULL OR merged_into_person_id <> id",
+            name="person_merge_not_self",
+        ),
         Index("ix_people_merged_into_person_id", "merged_into_person_id"),
     )
 

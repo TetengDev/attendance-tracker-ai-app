@@ -88,11 +88,14 @@ def test_schedule_assignment_priority_breaks_ties_within_scope() -> None:
         effective_from=date(2026, 1, 1),
     )
 
-    assert resolve_schedule_assignment(
-        [low_priority, high_priority],
-        context,
-        business_date,
-    ) is high_priority
+    assert (
+        resolve_schedule_assignment(
+            [low_priority, high_priority],
+            context,
+            business_date,
+        )
+        is high_priority
+    )
 
 
 def test_schedule_assignment_ignores_non_effective_rows() -> None:
@@ -146,11 +149,15 @@ def test_shift_model_encodes_timezone_naive_template() -> None:
 
 
 def test_scheduling_models_encode_required_constraints() -> None:
-    schedule_rule_constraints = {constraint.name for constraint in cast(Table, ScheduleRule.__table__).constraints}
+    schedule_rule_constraints = {
+        constraint.name for constraint in cast(Table, ScheduleRule.__table__).constraints
+    }
     assignment_constraints = {
         constraint.name for constraint in cast(Table, ScheduleAssignment.__table__).constraints
     }
-    calendar_constraints = {constraint.name for constraint in cast(Table, CalendarDay.__table__).constraints}
+    calendar_constraints = {
+        constraint.name for constraint in cast(Table, CalendarDay.__table__).constraints
+    }
     exception_constraints = {
         constraint.name for constraint in cast(Table, PersonException.__table__).constraints
     }

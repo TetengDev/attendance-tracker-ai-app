@@ -27,7 +27,9 @@ class Base(DeclarativeBase):
 def uuid_pk() -> Mapped[UUID]:
     """UUID primary key backed by Postgres `gen_random_uuid()`."""
 
-    return mapped_column(Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    return mapped_column(
+        Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
 
 
 def bigint_identity_pk() -> Mapped[int]:

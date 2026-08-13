@@ -113,7 +113,9 @@ class AttendanceEvent(Base):
     )
     direction: Mapped[AttendanceEventDirection] = mapped_column(String(8), nullable=False)
     outcome: Mapped[AttendanceEventOutcome] = mapped_column(String(32), nullable=False)
-    location_source: Mapped[AttendanceLocationSource | None] = mapped_column(String(32), nullable=True)
+    location_source: Mapped[AttendanceLocationSource | None] = mapped_column(
+        String(32), nullable=True
+    )
     business_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     device_local_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_label: Mapped[str] = mapped_column(
@@ -371,11 +373,7 @@ def rebuild_attendance_records(
     for grain, expected in expected_by_grain.items():
         override = overrides_by_grain.get(grain)
         matching_events = sorted(
-            [
-                event
-                for event in events
-                if _event_matches_canonical_grain(event, grain, aliases)
-            ],
+            [event for event in events if _event_matches_canonical_grain(event, grain, aliases)],
             key=lambda event: event.occurred_at,
         )
         first_event = matching_events[0] if matching_events else None

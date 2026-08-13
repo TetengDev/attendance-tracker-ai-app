@@ -271,7 +271,7 @@ async def kiosk_websocket_endpoint(
         cached_allowed_cidrs = device.allowed_cidrs
         cached_device_mode = device.mode
         cached_location_id = device.location_id
-        
+
         # Check revocation status
         if global_revocation_registry.is_revoked(cached_device_id):
             await websocket.send_json(
@@ -373,7 +373,7 @@ async def kiosk_websocket_endpoint(
                 msg_type = payload.get("type")
                 if msg_type == ClientMessageType.HEARTBEAT:
                     heartbeat = Heartbeat.model_validate(payload)
-                    
+
                     # Immediate revocation check on heartbeat
                     if global_revocation_registry.is_revoked(device.id):
                         await websocket.send_json(
@@ -405,10 +405,12 @@ async def kiosk_websocket_endpoint(
                     await session.commit()
 
                     # Send token rotation message to client
-                    await websocket.send_json({
-                        "type": "token_rotation",
-                        "device_token": new_token,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "token_rotation",
+                            "device_token": new_token,
+                        }
+                    )
 
                     # Check for settings version update
                     new_resolved = await resolve_db_settings(session, context)
@@ -465,15 +467,17 @@ async def kiosk_websocket_endpoint(
                     # Lookup active person by external_id
                     from backend.app.models.people import Person as DbPerson
 
-                    stmt = select(DbPerson).where(
+                    stmt_person = select(DbPerson).where(
                         DbPerson.external_id == checkin.external_id,
                         DbPerson.is_active == True,
                     )
-                    res = await session.execute(stmt)
-                    person = res.scalar_one_or_none()
+                    res_person = await session.execute(stmt_person)
+                    person = res_person.scalar_one_or_none()
 
                     if person is None:
-                        logger.warning("Check-in failed: invalid external_id=%s", checkin.external_id)
+                        logger.warning(
+                            "Check-in failed: invalid external_id=%s", checkin.external_id
+                        )
                         await websocket.send_json(
                             ErrorMessage(
                                 type=ServerMessageType.ERROR,
@@ -534,11 +538,14 @@ async def kiosk_websocket_endpoint(
                     # Persist event
                     now = datetime.now(tz=UTC)
                     from backend.app.scan.pipeline import _compute_occurred_at
-                    max_backdate = resolved_settings.settings.get("scan.max_offline_backdate_minutes", 240)
+
+                    max_backdate = resolved_settings.settings.get(
+                        "scan.max_offline_backdate_minutes", 240
+                    )
                     occurred_at, was_backdated = _compute_occurred_at(
                         now,
                         checkin.monotonic_offset_ms,
-                        max_offline_backdate_minutes=int(max_backdate)
+                        max_offline_backdate_minutes=int(max_backdate),
                     )
                     event = AttendanceEvent(
                         idempotency_key=checkin.idempotency_key,
@@ -548,9 +555,7 @@ async def kiosk_websocket_endpoint(
                         location_id=attribution.location_id,
                         direction=checkin.direction,
                         outcome=AttendanceEventOutcome.ACCEPTED,
-                        location_source=AttendanceLocationSource(
-                            attribution.location_source.value
-                        ),
+                        location_source=AttendanceLocationSource(attribution.location_source.value),
                         client_captured_at=occurred_at,
                         server_received_at=now,
                         occurred_at=occurred_at,
@@ -668,6 +673,7 @@ async def kiosk_websocket_endpoint(
                         assert device.location_id is not None
                         from backend.app.models.sessions import ScanSessionLocationSource
                         from backend.app.scan.sessions import open_scan_session
+
                         scan_session = open_scan_session(
                             device,
                             location_id=device.location_id,
@@ -678,7 +684,11 @@ async def kiosk_websocket_endpoint(
                         )
                         session.add(scan_session)
                         await session.commit()
-                        logger.info("Implicitly created scan session %s for fixed device %s", scan_session.id, device.id)
+                        logger.info(
+                            "Implicitly created scan session %s for fixed device %s",
+                            scan_session.id,
+                            device.id,
+                        )
 
                     try:
                         attribution = require_scan_attribution(
@@ -688,7 +698,11 @@ async def kiosk_websocket_endpoint(
                             settings=resolved_settings.settings,
                         )
                     except ScanSessionError as exc:
-                        logger.warning("Scan attribution failed for device=%s: %s", device.id if device is not None else 'unknown', str(exc))
+                        logger.warning(
+                            "Scan attribution failed for device=%s: %s",
+                            device.id if device is not None else "unknown",
+                            str(exc),
+                        )
                         await websocket.send_json(
                             ErrorMessage(
                                 type=ServerMessageType.ERROR,

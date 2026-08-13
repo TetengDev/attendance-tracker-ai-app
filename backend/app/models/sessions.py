@@ -49,9 +49,15 @@ class ScanSession(Base):
             name="last_activity_not_before_started_at",
         ),
         CheckConstraint("scan_count >= 0", name="scan_count_non_negative"),
-        CheckConstraint("start_lat IS NULL OR start_lat BETWEEN -90 AND 90", name="start_lat_range"),
-        CheckConstraint("start_lng IS NULL OR start_lng BETWEEN -180 AND 180", name="start_lng_range"),
-        CheckConstraint("gps_accuracy_m IS NULL OR gps_accuracy_m >= 0", name="gps_accuracy_non_negative"),
+        CheckConstraint(
+            "start_lat IS NULL OR start_lat BETWEEN -90 AND 90", name="start_lat_range"
+        ),
+        CheckConstraint(
+            "start_lng IS NULL OR start_lng BETWEEN -180 AND 180", name="start_lng_range"
+        ),
+        CheckConstraint(
+            "gps_accuracy_m IS NULL OR gps_accuracy_m >= 0", name="gps_accuracy_non_negative"
+        ),
         Index(
             "uq_scan_sessions_open_device",
             "device_id",

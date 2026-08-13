@@ -61,7 +61,9 @@ def test_location_override_wins_when_device_override_missing() -> None:
 def test_non_matching_scoped_rows_are_ignored() -> None:
     rows = [
         setting("kiosk.greeting_text", SettingScope.ORG, None, "Org", version=2),
-        setting("kiosk.greeting_text", SettingScope.LOCATION, OTHER_LOCATION_ID, "Other", version=3),
+        setting(
+            "kiosk.greeting_text", SettingScope.LOCATION, OTHER_LOCATION_ID, "Other", version=3
+        ),
     ]
 
     assert resolve_setting("kiosk.greeting_text", rows, CONTEXT, version=3).value == "Org"

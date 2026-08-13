@@ -656,4 +656,3 @@ class TestScanPipelineImpossibleTravel:
             settings=settings,
         )
         assert res2.outcome == "location_conflict"
-

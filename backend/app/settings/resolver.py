@@ -223,8 +223,7 @@ def resolve_settings(
     rows = tuple(values)
     _validate_rows(rows)
     resolved = {
-        key: resolve_setting(key, rows, context, version=version).value
-        for key in SETTINGS_SCHEMA
+        key: resolve_setting(key, rows, context, version=version).value for key in SETTINGS_SCHEMA
     }
     row_version = max((row.version for row in rows), default=version)
     return ResolvedSettings(settings=resolved, settings_version=max(version, row_version))

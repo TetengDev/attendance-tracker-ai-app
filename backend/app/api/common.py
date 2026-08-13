@@ -20,6 +20,7 @@ from backend.app.models.audit import AuditActorKind
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
+
 class StrictSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
@@ -86,16 +87,24 @@ async def authenticated_admin_user(
     x_admin_id: Annotated[str | None, Header(alias="x-admin-id")] = None,
 ) -> AdminUser:
     if x_admin_id is None:
-        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required"))
+        raise translate_crud_error(
+            CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required")
+        )
     try:
         admin_id = UUID(x_admin_id)
     except ValueError as exc:
-        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "invalid admin identity")) from exc
+        raise translate_crud_error(
+            CrudError(CrudErrorCode.UNAUTHORIZED, "invalid admin identity")
+        ) from exc
     admin_user = (
-        await session.execute(select(AdminUser).where(AdminUser.id == admin_id, AdminUser.is_active.is_(True)))
+        await session.execute(
+            select(AdminUser).where(AdminUser.id == admin_id, AdminUser.is_active.is_(True))
+        )
     ).scalar_one_or_none()
     if admin_user is None:
-        raise translate_crud_error(CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required"))
+        raise translate_crud_error(
+            CrudError(CrudErrorCode.UNAUTHORIZED, "admin authentication required")
+        )
     return admin_user
 
 

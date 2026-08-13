@@ -14,6 +14,7 @@ import jwt
 
 # ── Token hashing & verification ──────────────────────────────────────────
 
+
 def get_device_token_key(kek: str) -> bytes:
     """Derive a 32-byte key from the KEK for HMAC operation."""
     return hashlib.sha256(kek.encode("utf-8")).digest()
@@ -31,6 +32,7 @@ def verify_device_token(token: str, token_hash: str, secret_key: bytes) -> bool:
 
 
 # ── Pairing code utilities ───────────────────────────────────────────────
+
 
 def generate_pairing_code() -> str:
     """Generate a cryptographically secure 8-character pairing code."""
@@ -52,6 +54,7 @@ def verify_pairing_code(code: str, code_hash: str) -> bool:
 
 
 # ── JWT signing & validation ─────────────────────────────────────────────
+
 
 def issue_device_jwt(
     device_id: UUID,
@@ -78,6 +81,7 @@ def decode_device_jwt(token_jwt: str, secret_key: str) -> dict[str, Any]:
 
 # ── CIDR Validation ───────────────────────────────────────────────────────
 
+
 def is_ip_allowed(ip_str: str, allowed_cidrs: list[str]) -> bool:
     """Verify that a client's IP falls within the device's allowed CIDRs.
 
@@ -103,6 +107,7 @@ def is_ip_allowed(ip_str: str, allowed_cidrs: list[str]) -> bool:
 
 
 # ── Revocation Registry ───────────────────────────────────────────────────
+
 
 class RevocationRegistry:
     """Abstract revocation registry.

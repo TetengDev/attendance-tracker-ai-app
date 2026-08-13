@@ -166,4 +166,3 @@ def _settings_with_defaults(overrides: dict[str, object] | None) -> dict[str, ob
     if overrides is not None:
         values.update(overrides)
     return values
-

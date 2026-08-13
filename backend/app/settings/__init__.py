@@ -11,4 +11,3 @@ __all__ = [
     "get_float_setting",
     "get_int_setting",
 ]
-

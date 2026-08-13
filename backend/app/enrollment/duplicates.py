@@ -213,7 +213,9 @@ async def find_all_gallery_duplicates(
 def main() -> None:
     from backend.app.db.session import get_session_factory
 
-    parser = argparse.ArgumentParser(description="Find all duplicate face enrollments in the gallery.")
+    parser = argparse.ArgumentParser(
+        description="Find all duplicate face enrollments in the gallery."
+    )
     _ = parser.parse_args()
 
     async def _run() -> None:

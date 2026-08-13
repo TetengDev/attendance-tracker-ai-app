@@ -56,6 +56,7 @@ def test_deep_health_returns_503_when_dependency_unreachable(monkeypatch: Monkey
 
 def test_deep_health_exposes_settings_version(monkeypatch: MonkeyPatch) -> None:
     from backend.app.face.gallery import DEFAULT_GALLERY_STATE
+
     with DEFAULT_GALLERY_STATE._lock:
         DEFAULT_GALLERY_STATE._required_version = 1
         DEFAULT_GALLERY_STATE._loaded_version = 0

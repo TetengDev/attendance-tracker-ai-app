@@ -18,7 +18,9 @@ from backend.app.face.engine import ONNXFaceEngine
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sweep face recognition thresholds and generate ROC statistics.")
+    parser = argparse.ArgumentParser(
+        description="Sweep face recognition thresholds and generate ROC statistics."
+    )
     parser.add_argument(
         "--model-dir",
         type=str,
@@ -98,13 +100,13 @@ def main() -> int:
         # Extract genuine embedding (original image)
         aligned = engine.align(img, det.landmarks)
         emb = engine.embed(aligned)
-        
+
         # Generate genuine pair by applying a realistic minor 2-pixel shift
         shifted_img = np.roll(img, shift=2, axis=0)
         dets_shift = engine.detect(shifted_img)
         if not dets_shift:
             continue
-            
+
         aligned_shift = engine.align(shifted_img, dets_shift[0].landmarks)
         emb_shift = engine.embed(aligned_shift)
 
@@ -121,25 +123,32 @@ def main() -> int:
 
     M = len(embeddings)
     if M < 10:
-        print(f"Error: Only processed {M} face images successfully. Need at least 10.", file=sys.stderr)
+        print(
+            f"Error: Only processed {M} face images successfully. Need at least 10.",
+            file=sys.stderr,
+        )
         return 1
 
     print(f"\nSuccessfully extracted embeddings for {M} identities.")
-    
+
     # ── Impostor similarities (similarities between different identities) ──
     # Matrix shape: M x M
     emb_matrix = np.array(embeddings)
     sim_matrix = np.dot(emb_matrix, emb_matrix.T)
     # Extract only upper-triangle (excluding diagonal) to prevent self-matching comparisons
     impostor_sims = sim_matrix[np.triu_indices(M, k=1)]
-    
+
     # ── Genuine similarities (similarities between same identity, slightly perturbed) ──
-    genuine_sims = np.array([np.dot(emb, emb_shift) for emb, emb_shift in zip(embeddings, shifted_embeddings)])
+    genuine_sims = np.array(
+        [np.dot(emb, emb_shift) for emb, emb_shift in zip(embeddings, shifted_embeddings)]
+    )
 
     print(f"Total Impostor pairs evaluated: {len(impostor_sims)}")
     print(f"Total Genuine pairs evaluated: {len(genuine_sims)}")
     print(f"Genuine Similarity Mean: {np.mean(genuine_sims):.4f} (std={np.std(genuine_sims):.4f})")
-    print(f"Impostor Similarity Mean: {np.mean(impostor_sims):.4f} (std={np.std(impostor_sims):.4f})")
+    print(
+        f"Impostor Similarity Mean: {np.mean(impostor_sims):.4f} (std={np.std(impostor_sims):.4f})"
+    )
 
     # ── Threshold Sweep ──
     print("\n" + "=" * 90)
@@ -181,15 +190,19 @@ def main() -> int:
     print(f"  FMR (1:1) at {best_t:.2f}: {rec_fmr:.6f}")
     print(f"  FAR (1:N={args.gallery_size}) at {best_t:.2f}: {rec_far:.6f}")
     print(f"  FRR (1:1) at {best_t:.2f}: {rec_frr:.6f}")
-    
+
     # Check if threshold conforms to PLAN.md expectations
     print("\nVerification Gate:")
     if best_t >= 0.45:
-        print(f"  [PASS] Recommended threshold {best_t:.2f} is >= 0.45 (conforming to PLAN.md §0 #9).")
+        print(
+            f"  [PASS] Recommended threshold {best_t:.2f} is >= 0.45 (conforming to PLAN.md §0 #9)."
+        )
         print("=" * 90)
         return 0
     else:
-        print(f"  [FAIL] Recommended threshold {best_t:.2f} is below 0.45. Consider increasing sample size.")
+        print(
+            f"  [FAIL] Recommended threshold {best_t:.2f} is below 0.45. Consider increasing sample size."
+        )
         print("=" * 90)
         return 1
 

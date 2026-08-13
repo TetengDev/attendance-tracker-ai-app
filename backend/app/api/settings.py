@@ -7,7 +7,6 @@ from fastapi import APIRouter
 from backend.app.api.common import AdminUserDep, SessionDep, StrictSchema, require_org_admin
 from backend.app.settings.registry import SETTINGS_SCHEMA, default_settings
 
-
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
@@ -41,19 +40,21 @@ async def get_settings_schema(
     settings_list = []
     for key, spec in SETTINGS_SCHEMA.items():
         category = key.split(".")[0]
-        settings_list.append(SettingInfo(
-            key=key,
-            type=spec.type,
-            default=spec.default,
-            value=defaults.get(key, spec.default),
-            scope=spec.scope,
-            min=spec.min,
-            max=spec.max,
-            enum=list(spec.enum) if spec.enum else None,
-            max_length=spec.max_length,
-            format=spec.format,
-            note=spec.note,
-            category=category,
-        ))
+        settings_list.append(
+            SettingInfo(
+                key=key,
+                type=spec.type,
+                default=spec.default,
+                value=defaults.get(key, spec.default),
+                scope=spec.scope,
+                min=spec.min,
+                max=spec.max,
+                enum=list(spec.enum) if spec.enum else None,
+                max_length=spec.max_length,
+                format=spec.format,
+                note=spec.note,
+                category=category,
+            )
+        )
 
     return SettingsResponse(settings=settings_list)

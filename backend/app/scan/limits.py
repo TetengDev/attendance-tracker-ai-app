@@ -193,7 +193,7 @@ class RedisCooldownChecker(CooldownChecker):
         member = f"{now}:{uuid4()}"
         res = self._unknown_rate_script(
             keys=[unknown_key, lockout_key],
-            args=[now, unknown_rate_per_minute, unknown_lockout_seconds, member]
+            args=[now, unknown_rate_per_minute, unknown_lockout_seconds, member],
         )
         return bool(res)
 

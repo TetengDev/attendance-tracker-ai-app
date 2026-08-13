@@ -52,6 +52,7 @@ def checker(request: pytest.FixtureRequest) -> Iterator[CooldownChecker]:
 
 # ── Cooldown Tests ────────────────────────────────────────────────────────────
 
+
 def test_check_cooldown_location_scope(checker: CooldownChecker) -> None:
     person_id = uuid4()
     location_id = uuid4()
@@ -59,14 +60,17 @@ def test_check_cooldown_location_scope(checker: CooldownChecker) -> None:
     now = datetime.now(tz=UTC)
 
     # 1. Initially no cooldown
-    assert checker.check_cooldown(
-        person_id,
-        location_id,
-        "device_fixed",
-        cooldown_seconds=10,
-        cooldown_scope="location",
-        device_id=device_id,
-    ) is None
+    assert (
+        checker.check_cooldown(
+            person_id,
+            location_id,
+            "device_fixed",
+            cooldown_seconds=10,
+            cooldown_scope="location",
+            device_id=device_id,
+        )
+        is None
+    )
 
     # 2. Set location cooldown
     checker.set_cooldown(
@@ -93,14 +97,17 @@ def test_check_cooldown_location_scope(checker: CooldownChecker) -> None:
 
     # 4. Different location should NOT trigger cooldown under "location" scope
     other_location = uuid4()
-    assert checker.check_cooldown(
-        person_id,
-        other_location,
-        "device_fixed",
-        cooldown_seconds=10,
-        cooldown_scope="location",
-        device_id=device_id,
-    ) is None
+    assert (
+        checker.check_cooldown(
+            person_id,
+            other_location,
+            "device_fixed",
+            cooldown_seconds=10,
+            cooldown_scope="location",
+            device_id=device_id,
+        )
+        is None
+    )
 
 
 def test_check_cooldown_global_scope(checker: CooldownChecker) -> None:
@@ -122,14 +129,17 @@ def test_check_cooldown_global_scope(checker: CooldownChecker) -> None:
     )
 
     # Global cooldown active even at another location
-    assert checker.check_cooldown(
-        person_id,
-        other_location,
-        "device_fixed",
-        cooldown_seconds=10,
-        cooldown_scope="global",
-        device_id=device_id,
-    ) is not None
+    assert (
+        checker.check_cooldown(
+            person_id,
+            other_location,
+            "device_fixed",
+            cooldown_seconds=10,
+            cooldown_scope="global",
+            device_id=device_id,
+        )
+        is not None
+    )
 
 
 def test_check_cooldown_device_scope(checker: CooldownChecker) -> None:
@@ -151,27 +161,34 @@ def test_check_cooldown_device_scope(checker: CooldownChecker) -> None:
     )
 
     # Cooldown active on same device
-    assert checker.check_cooldown(
-        person_id,
-        location_id,
-        "device_fixed",
-        cooldown_seconds=10,
-        cooldown_scope="device",
-        device_id=device_id,
-    ) is not None
+    assert (
+        checker.check_cooldown(
+            person_id,
+            location_id,
+            "device_fixed",
+            cooldown_seconds=10,
+            cooldown_scope="device",
+            device_id=device_id,
+        )
+        is not None
+    )
 
     # Cooldown NOT active on different device
-    assert checker.check_cooldown(
-        person_id,
-        location_id,
-        "device_fixed",
-        cooldown_seconds=10,
-        cooldown_scope="device",
-        device_id=other_device,
-    ) is None
+    assert (
+        checker.check_cooldown(
+            person_id,
+            location_id,
+            "device_fixed",
+            cooldown_seconds=10,
+            cooldown_scope="device",
+            device_id=other_device,
+        )
+        is None
+    )
 
 
 # ── Impossible Travel Tests ────────────────────────────────────────────────────
+
 
 def test_check_impossible_travel_both_fixed(checker: CooldownChecker) -> None:
     person_id = uuid4()
@@ -190,12 +207,15 @@ def test_check_impossible_travel_both_fixed(checker: CooldownChecker) -> None:
     )
 
     # Second scan: device_fixed, different location, within 120s -> True (conflict)
-    assert checker.check_impossible_travel(
-        person_id,
-        location_b,
-        "device_fixed",
-        min_inter_location_seconds=120,
-    ) is True
+    assert (
+        checker.check_impossible_travel(
+            person_id,
+            location_b,
+            "device_fixed",
+            min_inter_location_seconds=120,
+        )
+        is True
+    )
 
     # Second scan: outside window -> False
     checker.set_cooldown(
@@ -206,12 +226,15 @@ def test_check_impossible_travel_both_fixed(checker: CooldownChecker) -> None:
         cooldown_seconds=10,
         cooldown_scope="location",
     )
-    assert checker.check_impossible_travel(
-        person_id,
-        location_b,
-        "device_fixed",
-        min_inter_location_seconds=120,
-    ) is False
+    assert (
+        checker.check_impossible_travel(
+            person_id,
+            location_b,
+            "device_fixed",
+            min_inter_location_seconds=120,
+        )
+        is False
+    )
 
 
 def test_check_impossible_travel_roaming_ignored(checker: CooldownChecker) -> None:
@@ -229,12 +252,15 @@ def test_check_impossible_travel_roaming_ignored(checker: CooldownChecker) -> No
         cooldown_seconds=10,
         cooldown_scope="location",
     )
-    assert checker.check_impossible_travel(
-        person_id,
-        location_b,
-        "device_fixed",
-        min_inter_location_seconds=120,
-    ) is False
+    assert (
+        checker.check_impossible_travel(
+            person_id,
+            location_b,
+            "device_fixed",
+            min_inter_location_seconds=120,
+        )
+        is False
+    )
 
     # 2. First scan fixed, second roaming -> should ignore
     checker.set_cooldown(
@@ -245,12 +271,15 @@ def test_check_impossible_travel_roaming_ignored(checker: CooldownChecker) -> No
         cooldown_seconds=10,
         cooldown_scope="location",
     )
-    assert checker.check_impossible_travel(
-        person_id,
-        location_b,
-        "geofence",  # roaming
-        min_inter_location_seconds=120,
-    ) is False
+    assert (
+        checker.check_impossible_travel(
+            person_id,
+            location_b,
+            "geofence",  # roaming
+            min_inter_location_seconds=120,
+        )
+        is False
+    )
 
 
 def test_check_impossible_travel_same_location(checker: CooldownChecker) -> None:
@@ -267,15 +296,19 @@ def test_check_impossible_travel_same_location(checker: CooldownChecker) -> None
         cooldown_scope="location",
     )
     # Same location -> no conflict
-    assert checker.check_impossible_travel(
-        person_id,
-        location_a,
-        "device_fixed",
-        min_inter_location_seconds=120,
-    ) is False
+    assert (
+        checker.check_impossible_travel(
+            person_id,
+            location_a,
+            "device_fixed",
+            min_inter_location_seconds=120,
+        )
+        is False
+    )
 
 
 # ── Rate Limiting Tests ────────────────────────────────────────────────────────
+
 
 def test_check_rate_limit(checker: CooldownChecker) -> None:
     device_id = uuid4()
@@ -299,6 +332,7 @@ def test_check_rate_limit(checker: CooldownChecker) -> None:
 
 # ── Unknown Face Lockout Tests ───────────────────────────────────────────────
 
+
 def test_check_unknown_rate_lockout(checker: CooldownChecker) -> None:
     device_id = uuid4()
 
@@ -308,39 +342,52 @@ def test_check_unknown_rate_lockout(checker: CooldownChecker) -> None:
 
     # Send 3 unknown faces
     for _ in range(limit):
-        assert checker.check_unknown_rate(
+        assert (
+            checker.check_unknown_rate(
+                device_id,
+                unknown_rate_per_minute=limit,
+                unknown_lockout_seconds=lockout_seconds,
+            )
+            is False
+        )
+
+    # 4th unknown face -> True (locked out!)
+    assert (
+        checker.check_unknown_rate(
             device_id,
             unknown_rate_per_minute=limit,
             unknown_lockout_seconds=lockout_seconds,
-        ) is False
-
-    # 4th unknown face -> True (locked out!)
-    assert checker.check_unknown_rate(
-        device_id,
-        unknown_rate_per_minute=limit,
-        unknown_lockout_seconds=lockout_seconds,
-    ) is True
+        )
+        is True
+    )
 
     # Lockout blocks further tries
-    assert checker.check_unknown_rate(
-        device_id,
-        unknown_rate_per_minute=limit,
-        unknown_lockout_seconds=lockout_seconds,
-    ) is True
+    assert (
+        checker.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=limit,
+            unknown_lockout_seconds=lockout_seconds,
+        )
+        is True
+    )
 
     # Wait for lockout window (2 seconds) to expire
     time.sleep(2.1)
 
     # Allowed again
-    assert checker.check_unknown_rate(
-        device_id,
-        unknown_rate_per_minute=limit,
-        unknown_lockout_seconds=lockout_seconds,
-    ) is False
+    assert (
+        checker.check_unknown_rate(
+            device_id,
+            unknown_rate_per_minute=limit,
+            unknown_lockout_seconds=lockout_seconds,
+        )
+        is False
+    )
 
 
 def test_check_unknown_rate_lockout_extended(checker: CooldownChecker) -> None:
     from unittest.mock import patch
+
     device_id = uuid4()
     limit = 3
     lockout_seconds = 120  # 2 minutes
@@ -355,22 +402,28 @@ def test_check_unknown_rate_lockout_extended(checker: CooldownChecker) -> None:
 
         # Send 3 unknown faces
         for _ in range(limit):
-            assert checker.check_unknown_rate(
-                device_id,
-                unknown_rate_per_minute=limit,
-                unknown_lockout_seconds=lockout_seconds,
-            ) is False
+            assert (
+                checker.check_unknown_rate(
+                    device_id,
+                    unknown_rate_per_minute=limit,
+                    unknown_lockout_seconds=lockout_seconds,
+                )
+                is False
+            )
             # Increment time slightly
             current_time += 1.0
             mock_time.return_value = current_time
             mock_mono.return_value = current_time
 
         # 4th unknown face -> locked out
-        assert checker.check_unknown_rate(
-            device_id,
-            unknown_rate_per_minute=limit,
-            unknown_lockout_seconds=lockout_seconds,
-        ) is True
+        assert (
+            checker.check_unknown_rate(
+                device_id,
+                unknown_rate_per_minute=limit,
+                unknown_lockout_seconds=lockout_seconds,
+            )
+            is True
+        )
 
         # Fast forward time by 65 seconds (total elapsed = 68 seconds)
         # This is more than 60 seconds (rate window), but less than 120 seconds (lockout window)
@@ -379,11 +432,14 @@ def test_check_unknown_rate_lockout_extended(checker: CooldownChecker) -> None:
         mock_mono.return_value = current_time
 
         # Should STILL be locked out!
-        assert checker.check_unknown_rate(
-            device_id,
-            unknown_rate_per_minute=limit,
-            unknown_lockout_seconds=lockout_seconds,
-        ) is True
+        assert (
+            checker.check_unknown_rate(
+                device_id,
+                unknown_rate_per_minute=limit,
+                unknown_lockout_seconds=lockout_seconds,
+            )
+            is True
+        )
 
         # Fast forward past lockout window (total elapsed = 125 seconds)
         current_time += 55.0
@@ -395,10 +451,11 @@ def test_check_unknown_rate_lockout_extended(checker: CooldownChecker) -> None:
             checker.client.delete(f"scan:lockout:{device_id}")
 
         # Lockout expired -> should be allowed now
-        assert checker.check_unknown_rate(
-            device_id,
-            unknown_rate_per_minute=limit,
-            unknown_lockout_seconds=lockout_seconds,
-        ) is False
-
-
+        assert (
+            checker.check_unknown_rate(
+                device_id,
+                unknown_rate_per_minute=limit,
+                unknown_lockout_seconds=lockout_seconds,
+            )
+            is False
+        )

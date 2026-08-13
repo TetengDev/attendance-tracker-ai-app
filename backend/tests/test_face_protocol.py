@@ -25,10 +25,12 @@ def test_fake_faceengine_detect_and_embed() -> None:
 
 def test_queue_and_reset() -> None:
     engine = FakeFaceEngine()
-    engine.queue_results([
-        {"person": "bob", "score": 0.9, "liveness": 0.5, "n_faces": 1},
-        {"person": None, "score": 0.0, "liveness": 0.2, "n_faces": 0},
-    ])
+    engine.queue_results(
+        [
+            {"person": "bob", "score": 0.9, "liveness": 0.5, "n_faces": 1},
+            {"person": None, "score": 0.0, "liveness": 0.2, "n_faces": 0},
+        ]
+    )
 
     img = np.zeros((240, 320, 3), dtype=np.uint8)
     dets1 = engine.detect(img)
