@@ -55,7 +55,9 @@ class Notification(Base):
         nullable=False,
     )
 
-    type: Mapped[str] = mapped_column(String(32), nullable=False)  # "absence", "tardiness", "retraction"
+    type: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # "absence", "tardiness", "retraction"
     status: Mapped[NotificationStatus] = mapped_column(
         String(32), nullable=False, default=NotificationStatus.PENDING
     )
@@ -77,9 +79,7 @@ class Notification(Base):
 
 class NotificationRule(Base):
     __tablename__ = "notification_rules"
-    __table_args__ = (
-        CheckConstraint("delay_minutes >= 0", name="delay_minutes_non_negative"),
-    )
+    __table_args__ = (CheckConstraint("delay_minutes >= 0", name="delay_minutes_non_negative"),)
 
     id: Mapped[UUID] = uuid_pk()
     group_id: Mapped[UUID | None] = mapped_column(
@@ -87,10 +87,14 @@ class NotificationRule(Base):
         ForeignKey("groups.id", ondelete="SET NULL"),
         nullable=True,
     )
-    person_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)  # "student", "staff", etc.
+    person_kind: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # "student", "staff", etc.
     trigger_status: Mapped[str] = mapped_column(String(32), nullable=False)  # "absent" or "late"
     delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    channel: Mapped[ContactChannel] = mapped_column(String(32), nullable=False, default=ContactChannel.SMS)
+    channel: Mapped[ContactChannel] = mapped_column(
+        String(32), nullable=False, default=ContactChannel.SMS
+    )
     template: Mapped[Text] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = created_at_column()

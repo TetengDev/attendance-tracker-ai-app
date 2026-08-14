@@ -232,6 +232,7 @@ def setup_person_with_guardian() -> tuple[Person, Guardian]:
 # Test Cases
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_process_record_notifications_queues_absence() -> None:
     """Verifies that transitioning to ABSENT queues an absence notification to the active guardian."""
@@ -362,7 +363,7 @@ async def test_process_record_notifications_queues_retraction_for_sent() -> None
 async def test_get_matching_rule_precedence() -> None:
     """Tests that rule matching properly scores rules by specificity."""
     person, _guardian = setup_person_with_guardian()
-    
+
     # Active group membership
     group = Group(id=GROUP_ID, name="Grade 7", kind="grade")
     membership = PersonGroup(
@@ -400,7 +401,7 @@ async def test_get_matching_rule_precedence() -> None:
     )
 
     session = NotificationMockSession(rules=[rule_a, rule_b, rule_c])
-    
+
     # Rule C should win because it matches both kind and group
     rule = await get_matching_rule(session, person, "absent")
     assert rule is not None
@@ -456,7 +457,7 @@ async def test_dispatch_pending_notifications() -> None:
     assert mock_gateway.sent_sms[0]["recipient"] == "+639111111111"
     assert len(mock_gateway.sent_emails) == 1
     assert mock_gateway.sent_emails[0]["recipient"] == "guardian@example.com"
-    
+
     # Assert database status update
     assert notif_sms.status == NotificationStatus.SENT
     assert notif_email.status == NotificationStatus.SENT
@@ -514,14 +515,13 @@ async def test_dispatch_pending_notifications() -> None:
 @pytest.mark.anyio
 async def test_pluggable_channels_registry() -> None:
     """Verify that pluggable channels are correctly initialized in the registry."""
-    import os
     from backend.app.notifications.channels import (
-        get_sms_channel,
-        get_email_channel,
         FakeSmsChannel,
         SmtpEmailChannel,
-        set_sms_channel,
+        get_email_channel,
+        get_sms_channel,
         set_email_channel,
+        set_sms_channel,
     )
 
     # Clear registry cache
@@ -537,4 +537,3 @@ async def test_pluggable_channels_registry() -> None:
     assert isinstance(email_chan, SmtpEmailChannel)
     assert email_chan.hostname == "localhost"
     assert email_chan.port == 1025
-

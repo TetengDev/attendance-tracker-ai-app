@@ -1,11 +1,13 @@
 import os
 import sys
+
 from backend.app.notifications.channels.base import NotificationChannel
 from backend.app.notifications.channels.email import SmtpEmailChannel
-from backend.app.notifications.channels.sms import TwilioSmsChannel, FakeSmsChannel
+from backend.app.notifications.channels.sms import FakeSmsChannel, TwilioSmsChannel
 
 _sms_channel: NotificationChannel | None = None
 _email_channel: NotificationChannel | None = None
+
 
 def get_sms_channel() -> NotificationChannel:
     global _sms_channel
@@ -16,9 +18,11 @@ def get_sms_channel() -> NotificationChannel:
             _sms_channel = TwilioSmsChannel()
     return _sms_channel
 
+
 def set_sms_channel(channel: NotificationChannel | None) -> None:
     global _sms_channel
     _sms_channel = channel
+
 
 def get_email_channel() -> NotificationChannel:
     global _email_channel
@@ -27,6 +31,7 @@ def get_email_channel() -> NotificationChannel:
         port = int(os.environ.get("SMTP_PORT", "1025"))
         _email_channel = SmtpEmailChannel(hostname=host, port=port)
     return _email_channel
+
 
 def set_email_channel(channel: NotificationChannel | None) -> None:
     global _email_channel

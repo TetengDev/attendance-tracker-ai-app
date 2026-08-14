@@ -86,9 +86,7 @@ async def process_record_notifications(
     person_stmt = (
         select(Person)
         .where(Person.id == record.person_id)
-        .options(
-            selectinload(Person.guardians).selectinload(PersonGuardian.guardian)
-        )
+        .options(selectinload(Person.guardians).selectinload(PersonGuardian.guardian))
     )
     person = (await session.execute(person_stmt)).scalar_one_or_none()
     if not person or not person.is_active or not person.guardians:
@@ -97,7 +95,9 @@ async def process_record_notifications(
     # Load expected attendance to calculate schedule start time / settings context
     expected = None
     if record.expected_attendance_id:
-        expected_stmt = select(ExpectedAttendance).where(ExpectedAttendance.id == record.expected_attendance_id)
+        expected_stmt = select(ExpectedAttendance).where(
+            ExpectedAttendance.id == record.expected_attendance_id
+        )
         expected = (await session.execute(expected_stmt)).scalar_one_or_none()
 
     # Load shift info for template naming
@@ -123,14 +123,22 @@ async def process_record_notifications(
             if guardian.preferred_channel == ContactChannel.NONE:
                 continue
 
-            recipient = guardian.phone if guardian.preferred_channel == ContactChannel.SMS else guardian.email
+            recipient = (
+                guardian.phone
+                if guardian.preferred_channel == ContactChannel.SMS
+                else guardian.email
+            )
             if not recipient:
                 continue
 
             # Check matching rule or fallback to defaults
             rule = await get_matching_rule(session, person, "absent")
             delay = rule.delay_minutes if rule else delay_mins
-            template = rule.template if rule else "Hello {guardian_name}, {person_name} was marked absent for shift {shift_name} on {date}."
+            template = (
+                rule.template
+                if rule
+                else "Hello {guardian_name}, {person_name} was marked absent for shift {shift_name} on {date}."
+            )
 
             # Calculate scheduled send time
             base_time = expected.expected_start_at if expected else datetime.now(UTC)
@@ -170,7 +178,11 @@ async def process_record_notifications(
             session.add(notif)
 
     # 2. Handle Transition to Late / On Time / Present (Retraction of Absence)
-    elif record.status in (AttendanceStatus.ON_TIME, AttendanceStatus.LATE, AttendanceStatus.PRESENT_UNSCHEDULED):
+    elif record.status in (
+        AttendanceStatus.ON_TIME,
+        AttendanceStatus.LATE,
+        AttendanceStatus.PRESENT_UNSCHEDULED,
+    ):
         # Find any PENDING absence alerts and retract them immediately
         pending_stmt = select(Notification).where(
             Notification.person_id == record.person_id,
@@ -205,7 +217,11 @@ async def process_record_notifications(
                 if not guardian or guardian.preferred_channel == ContactChannel.NONE:
                     continue
 
-                recipient = guardian.phone if guardian.preferred_channel == ContactChannel.SMS else guardian.email
+                recipient = (
+                    guardian.phone
+                    if guardian.preferred_channel == ContactChannel.SMS
+                    else guardian.email
+                )
                 if not recipient:
                     continue
 
@@ -217,14 +233,21 @@ async def process_record_notifications(
                     continue
 
                 rule = await get_matching_rule(session, person, "retraction")
-                template = rule.template if rule else "Correction: {person_name} has arrived at {time} for shift {shift_name} on {date}."
+                template = (
+                    rule.template
+                    if rule
+                    else "Correction: {person_name} has arrived at {time} for shift {shift_name} on {date}."
+                )
 
                 # Get actual arrival time from events
                 arrival_time = "—"
                 if record.first_event_id:
                     # Lazy import to avoid circular references
                     from backend.app.models.attendance import AttendanceEvent
-                    event_stmt = select(AttendanceEvent).where(AttendanceEvent.id == record.first_event_id)
+
+                    event_stmt = select(AttendanceEvent).where(
+                        AttendanceEvent.id == record.first_event_id
+                    )
                     event = (await session.execute(event_stmt)).scalar_one_or_none()
                     if event:
                         # Format as local Manila time or local time format
@@ -271,7 +294,9 @@ async def get_matching_rule(
         return None
 
     # Get active groups for this person
-    group_ids = {m.group_id for m in person.group_memberships if m.is_active_on(datetime.now(UTC).date())}
+    group_ids = {
+        m.group_id for m in person.group_memberships if m.is_active_on(datetime.now(UTC).date())
+    }
 
     best_rule: NotificationRule | None = None
     best_score = -1
@@ -297,7 +322,9 @@ async def get_matching_rule(
     return best_rule
 
 
-async def dispatch_pending_notifications(session: Any, gateway: NotificationGateway | None = None) -> int:
+async def dispatch_pending_notifications(
+    session: Any, gateway: NotificationGateway | None = None
+) -> int:
     """Finds and sends all pending notifications scheduled to be sent now or in the past.
 
     Uses lock options to prevent double-delivery races, and implements retry and backoff.
@@ -306,6 +333,7 @@ async def dispatch_pending_notifications(session: Any, gateway: NotificationGate
         gateway = get_notification_gateway()
 
     from backend.app.notifications.channels import get_email_channel, get_sms_channel
+
     email_chan = get_email_channel()
     sms_chan = get_sms_channel()
 
@@ -361,7 +389,7 @@ async def dispatch_pending_notifications(session: Any, gateway: NotificationGate
                 notif.status = NotificationStatus.FAILED
                 notif.error_message = f"Max retries (5) exceeded: {exc}"
             else:
-                delay = 2 ** notif.retry_count
+                delay = 2**notif.retry_count
                 notif.scheduled_at = datetime.now(UTC) + timedelta(minutes=delay)
                 notif.error_message = f"Attempt {notif.retry_count}/5 failed: {exc}"
 
