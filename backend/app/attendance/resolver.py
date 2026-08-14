@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, date, datetime, time, timedelta
+from typing import cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from typing import Any, cast
 import redis
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.attendance.decision_table import AttendanceStatus
@@ -41,6 +41,19 @@ from backend.app.settings.resolver import (
 )
 
 logger = logging.getLogger("attendance_tracker")
+
+
+def _handle_resolver_task_done(
+    task: asyncio.Task[None], person_id: UUID, business_date: date
+) -> None:
+    try:
+        task.result()
+    except Exception:
+        logger.exception(
+            "Background resolve task failed for person %s on date %s",
+            person_id,
+            business_date,
+        )
 
 
 class RedisResolverState:
@@ -234,6 +247,11 @@ async def resolve(
     existing_records = (await session.execute(existing_rec_stmt)).scalars().all()
     existing_by_grain = {(r.shift_id, r.period_label): r for r in existing_records}
 
+    resolved_grains: set[tuple[UUID, str]] = set()
+    for grain, rec in existing_by_grain.items():
+        if rec.resolved_at > as_of:
+            resolved_grains.add(grain)
+
     if not expected_rows:
         # Rule 4: present_unscheduled
         # Only create a record if we have events that fall on this day
@@ -288,6 +306,7 @@ async def resolve(
             record.override_id = override.id if override else None
             record.expected_attendance_id = None
             session.add(record)
+            resolved_grains.add((dummy_shift_id, period_label))
     else:
         # Loop expected rows
         for expected in expected_rows:
@@ -420,13 +439,20 @@ async def resolve(
             record.flags = cast(dict[str, object], flags)
             record.resolved_at = as_of
             session.add(record)
+            resolved_grains.add((expected.shift_id, expected.period_label))
+
+    # Delete any stale/obsolete records for this person and date that were not resolved in this pass
+    for grain, rec in existing_by_grain.items():
+        if grain not in resolved_grains:
+            await session.delete(rec)
 
     await session.commit()
 
     # 8. Re-check dirty flag. If set again, re-enqueue
     if redis_resolver_state.is_dirty(person_id, business_date):
         logger.info("Person %s still dirty. Re-enqueuing resolve task.", person_id)
-        asyncio.create_task(resolve_with_new_session(person_id, business_date, as_of=as_of))
+        task = asyncio.create_task(resolve_with_new_session(person_id, business_date, as_of=as_of))
+        task.add_done_callback(lambda t: _handle_resolver_task_done(t, person_id, business_date))
 
 
 async def resolve_with_new_session(
@@ -516,9 +542,11 @@ async def expand_schedules(
                     ExpectedAttendance.voided_at.is_(None),
                 )
                 to_void = (await session.execute(void_stmt)).scalars().all()
-                for v in to_void:
-                    v.voided_at = datetime.now(UTC)
-                    session.add(v)
+                if to_void:
+                    for v in to_void:
+                        v.voided_at = datetime.now(UTC)
+                        session.add(v)
+                    redis_resolver_state.set_dirty(person.id, current_date)
 
                 current_date += timedelta(days=1)
                 continue
@@ -541,9 +569,11 @@ async def expand_schedules(
                     ExpectedAttendance.voided_at.is_(None),
                 )
                 to_void = (await session.execute(void_stmt)).scalars().all()
-                for v in to_void:
-                    v.voided_at = datetime.now(UTC)
-                    session.add(v)
+                if to_void:
+                    for v in to_void:
+                        v.voided_at = datetime.now(UTC)
+                        session.add(v)
+                    redis_resolver_state.set_dirty(person.id, current_date)
 
                 current_date += timedelta(days=1)
                 continue
@@ -600,9 +630,12 @@ async def expand_schedules(
                 ExpectedAttendance.voided_at.is_(None),
             )
             to_void = (await session.execute(void_stmt)).scalars().all()
-            for v in to_void:
-                v.voided_at = datetime.now(UTC)
-                session.add(v)
+            dirty_needed = False
+            if to_void:
+                for v in to_void:
+                    v.voided_at = datetime.now(UTC)
+                    session.add(v)
+                dirty_needed = True
 
             expected = existing_expected or ExpectedAttendance(
                 person_id=person.id,
@@ -610,14 +643,30 @@ async def expand_schedules(
                 shift_id=matched_rule.shift_id or UUID("00000000-0000-0000-0000-000000000000"),
                 period_label=matched_rule.period_label,
             )
-            expected.location_id = loc_id
-            expected.schedule_id = schedule.id
-            expected.expected_start_at = expected_start_at
-            expected.expected_end_at = expected_end_at
-            expected.absent_after_at = absent_after_at
-            expected.is_working_day = is_working_day
-            expected.voided_at = None  # Ensure unvoided if matched
-            session.add(expected)
+            
+            # Check if expected row changed
+            if (
+                not existing_expected
+                or expected.location_id != loc_id
+                or expected.schedule_id != schedule.id
+                or expected.expected_start_at != expected_start_at
+                or expected.expected_end_at != expected_end_at
+                or expected.absent_after_at != absent_after_at
+                or expected.is_working_day != is_working_day
+                or expected.voided_at is not None
+            ):
+                expected.location_id = loc_id
+                expected.schedule_id = schedule.id
+                expected.expected_start_at = expected_start_at
+                expected.expected_end_at = expected_end_at
+                expected.absent_after_at = absent_after_at
+                expected.is_working_day = is_working_day
+                expected.voided_at = None  # Ensure unvoided if matched
+                session.add(expected)
+                dirty_needed = True
+
+            if dirty_needed:
+                redis_resolver_state.set_dirty(person.id, current_date)
 
             current_date += timedelta(days=1)
 
@@ -634,9 +683,7 @@ async def rebuild_all_attendance(
     Truncates attendance_records, queries all expected rows and unmatched events,
     and runs the resolver.
     """
-    # 1. Truncate records
-    await session.execute(delete(AttendanceRecord))
-    await session.commit()
+    # 1. Rebuild cache incrementally via resolver (which handles stale record deletion)
 
     # 2. Find all unique (person_id, business_date) from active expected rows
     expected_stmt = (

@@ -1398,7 +1398,7 @@ async def test_rebuild_empty_tables() -> None:
     # No records created
     records = _get_added_records(session)
     assert len(records) == 0
-    assert session.committed >= 1  # At least the DELETE commit
+    assert session.committed == 0
 
 
 # ===========================================================================
