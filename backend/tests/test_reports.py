@@ -5,7 +5,6 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Self
 from uuid import UUID
 
-from backend.app.reports.generators import REPORT_GENERATORS
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
@@ -16,6 +15,7 @@ from backend.app.db.session import get_session
 from backend.app.main import create_app
 from backend.app.models.admin import AdminRole, AdminUser
 from backend.app.models.attendance import ReportJob, ReportJobStatus
+from backend.app.reports.generators import REPORT_GENERATORS
 from backend.app.reports.renderers import render_pdf, render_xlsx, stream_csv
 
 # ---------------------------------------------------------------------------
