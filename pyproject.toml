@@ -11,6 +11,7 @@ dependencies = [
   "cryptography>=49.0.0",
   "fastapi>=0.141.1",
   "greenlet>=3.5.4",
+  "jinja2>=3.1.6",
   "numpy>=2.2",
   "onnxruntime>=1.28.0",
   "opencv-python>=5.0.0.93",
@@ -23,7 +24,9 @@ dependencies = [
   "scikit-image>=0.26.0",
   "sqlalchemy>=2.0.51",
   "uvicorn>=0.52.0",
+  "weasyprint>=69.0",
   "websockets>=14.2",
+  "xlsxwriter>=3.2.9",
 ]
 
 [dependency-groups]
