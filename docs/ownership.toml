@@ -470,3 +470,15 @@ paths = [
   ".gitignore",
 ]
 
+[[ownership]]
+issue = "phase-8-notifications"
+paths = [
+  "backend/alembic/versions/249b317ca3b5_add_notifications_tables.py",
+  "backend/alembic/versions/9c5d350d9ecb_add_retry_count_to_notifications.py",
+  "backend/app/models/notifications.py",
+  "backend/app/notifications/**",
+  "backend/tests/test_notifications.py",
+  "backend/tests/test_notifications_channels.py",
+  "docs/ownership.toml",
+]
+
