@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -416,3 +417,35 @@ def _event_matches_canonical_grain(
         and event.shift_id == grain.shift_id
         and (event.period_label or PER_DAY_PERIOD_LABEL) == grain.period_label
     )
+
+
+class ReportJobStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ReportJob(Base):
+    __tablename__ = "report_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="status_valid",
+        ),
+        CheckConstraint("report_type <> ''", name="report_type_non_empty"),
+        CheckConstraint("format IN ('csv', 'xlsx', 'pdf')", name="format_valid"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    report_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    format: Mapped[str] = mapped_column(String(16), nullable=False)
+    parameters: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
