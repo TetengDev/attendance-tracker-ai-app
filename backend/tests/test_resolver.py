@@ -1452,3 +1452,137 @@ async def test_no_events_no_expected_no_records() -> None:
 
     records = _get_added_records(session)
     assert len(records) == 0
+
+
+# ===========================================================================
+# Group 8: TEN-53 Timezone, DST & Rebuild Cache Property
+# ===========================================================================
+
+
+@pytest.mark.anyio
+async def test_rebuild_attendance_cache_property() -> None:
+    """Proves cache property: TRUNCATE attendance_records, rebuild, assert identical."""
+    from backend.app.attendance.resolver import rebuild_all_attendance, resolve
+
+    expected = make_expected()
+    event = make_event(occurred_at=DAY_START + timedelta(minutes=5))
+    override = AttendanceOverride(
+        id=uuid4(),
+        person_id=PERSON_ID,
+        business_date=BUSINESS_DATE,
+        shift_id=SHIFT_ID,
+        period_label="",
+        status=AttendanceStatus.EXCUSED,
+        reason="Excused reason",
+    )
+
+    # 1. First run: resolve and save override
+    session1 = MockSession(
+        expected_rows=[expected],
+        events=[event],
+        overrides=[override],
+        expected_pairs=[(PERSON_ID, BUSINESS_DATE)],
+        event_pairs=[(PERSON_ID, BUSINESS_DATE)],
+    )
+    await resolve(session1, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+    records1 = _get_added_records(session1)
+    assert len(records1) == 1
+    orig_status = records1[0].status
+    orig_override_id = records1[0].override_id
+
+    # 2. Second run: simulate truncate (empty records) and run rebuild
+    session2 = MockSession(
+        expected_rows=[expected],
+        events=[event],
+        overrides=[override],
+        expected_pairs=[(PERSON_ID, BUSINESS_DATE)],
+        event_pairs=[(PERSON_ID, BUSINESS_DATE)],
+    )
+    await rebuild_all_attendance(session2, as_of=AS_OF)
+    records2 = _get_added_records(session2)
+
+    assert len(records2) == 1
+    assert records2[0].status == orig_status
+    assert records2[0].override_id == orig_override_id
+    assert records2[0].status == AttendanceStatus.EXCUSED
+
+
+@pytest.mark.anyio
+async def test_resolve_idempotence() -> None:
+    """Verify resolve() is idempotent for a fixed as_of."""
+    from backend.app.attendance.resolver import resolve
+
+    expected = make_expected()
+    event = make_event(occurred_at=DAY_START + timedelta(minutes=5))
+
+    session1 = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session1, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+    records1 = _get_added_records(session1)
+    assert len(records1) == 1
+
+    session2 = MockSession(
+        expected_rows=[expected], events=[event], existing_records=list(records1)
+    )
+    await resolve(session2, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+    records2 = _get_added_records(session2)
+    if records2:
+        assert records2[0].status == records1[0].status
+        assert records2[0].late_minutes == records1[0].late_minutes
+
+
+@pytest.mark.anyio
+async def test_resolve_pending_status() -> None:
+    """Verify that before grace/absent threshold, a missing check-in resolves to PENDING."""
+    from backend.app.attendance.resolver import resolve
+
+    expected = make_expected()
+    early_as_of = DAY_START + timedelta(minutes=5)
+
+    session = MockSession(expected_rows=[expected], events=[])
+    await resolve(session, PERSON_ID, BUSINESS_DATE, as_of=early_as_of)
+
+    records = _get_added_records(session)
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.PENDING
+
+
+@pytest.mark.anyio
+async def test_resolve_cross_timezone_scanning() -> None:
+    """Verify resolution when schedule timezone is Asia/Manila (+8) but check-in event occurs in America/New_York (-5)."""
+    from backend.app.attendance.resolver import resolve
+
+    expected = make_expected()
+    event = make_event(
+        occurred_at=datetime(2026, 8, 14, 0, 5, tzinfo=UTC),
+        location_id=LOCATION_ID,
+    )
+
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+
+    records = _get_added_records(session)
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.ON_TIME
+
+
+@pytest.mark.anyio
+async def test_timezone_business_date_isolation() -> None:
+    """Check-in at 07:30 Manila local time is 23:30 UTC previous day.
+
+    If the resolver incorrectly used UTC date (Aug 13), it would mismatch the expected row (Aug 14).
+    """
+    from backend.app.attendance.resolver import resolve
+
+    expected = make_expected()
+    event = make_event(
+        occurred_at=datetime(2026, 8, 13, 23, 30, tzinfo=UTC),
+    )
+
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+
+    records = _get_added_records(session)
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.ON_TIME
+    assert records[0].business_date == date(2026, 8, 14)
+

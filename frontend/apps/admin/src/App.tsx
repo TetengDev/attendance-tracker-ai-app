@@ -22,6 +22,7 @@ function Sidebar() {
     { to: "/", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
     { to: "/people", label: "People & Enrollment", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
     { to: "/devices", label: "Kiosks & Devices", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
+    { to: "/reports", label: "Reports & Export", icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
     { to: "/settings", label: "Settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" },
   ];
 
@@ -403,6 +404,121 @@ function CaptureFaceModal({ person, isOpen, onClose, onSuccess }: { person: any;
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OverrideModal({ isOpen, onClose, onSuccess, row }: { isOpen: boolean; onClose: () => void; onSuccess: () => void; row: any }) {
+  const [status, setStatus] = useState<string>("excused");
+  const [reason, setReason] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (row) {
+      setStatus(row.status || "excused");
+      setReason(row.reason || "");
+      setError(null);
+    }
+  }, [row]);
+
+  if (!isOpen || !row) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setError("Reason is required");
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/attendance/overrides`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70",
+        },
+        body: JSON.stringify({
+          person_id: row.person_id,
+          business_date: row.business_date,
+          shift_id: row.shift_id,
+          period_label: "day",
+          status,
+          reason: reason.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to submit override");
+      }
+
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl border border-zinc-200 w-full max-w-md shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <h3 className="text-lg font-bold text-zinc-900 mb-2">Override Attendance</h3>
+        <p className="text-xs text-zinc-500 mb-6">
+          Manually override status for <strong className="text-zinc-800">{row.name}</strong> on <strong className="text-zinc-800">{row.business_date}</strong>.
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200/80 rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+            >
+              <option value="present">Present</option>
+              <option value="late">Late</option>
+              <option value="absent">Absent</option>
+              <option value="excused">Excused</option>
+              <option value="holiday">Holiday</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Reason</label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason for manual modification..."
+              rows={3}
+              className="w-full bg-zinc-50 border border-zinc-200/80 rounded-xl px-4 py-2.5 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+            />
+          </div>
+
+          {error && <div className="text-red-500 text-xs font-medium bg-red-50 border border-red-100 p-2.5 rounded-xl">{error}</div>}
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-zinc-500 hover:text-zinc-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-xl text-sm tracking-wider uppercase transition-colors shadow-sm disabled:opacity-50"
+            >
+              {isSubmitting ? "Saving..." : "Apply Override"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -899,7 +1015,7 @@ const settingsRoute = createRoute({
     const grouped: Record<string, any[]> = {};
     for (const s of data?.settings || []) {
       if (!grouped[s.category]) grouped[s.category] = [];
-      grouped[s.category].push(s);
+      grouped[s.category]?.push(s);
     }
 
     const categoryOrder = ["face", "liveness", "scan", "session", "kiosk", "branding", "attendance", "privacy", "retention"];
@@ -940,7 +1056,7 @@ const settingsRoute = createRoute({
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{grouped[cat].length}</span>
+                      <span className="text-xs font-medium text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{grouped[cat]?.length || 0}</span>
                       <svg className={`w-5 h-5 text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
@@ -949,7 +1065,7 @@ const settingsRoute = createRoute({
                   {isExpanded && (
                     <div className="px-6 pb-5 border-t border-zinc-100">
                       <div className="divide-y divide-zinc-100">
-                        {grouped[cat].map((s: any) => <SettingControl key={s.key} setting={s} />)}
+                        {grouped[cat]?.map((s: any) => <SettingControl key={s.key} setting={s} />)}
                       </div>
                     </div>
                   )}
@@ -963,10 +1079,550 @@ const settingsRoute = createRoute({
   }
 });
 
+async function handleDownloadFile(url: string, filename: string) {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70"
+      }
+    });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err: any) {
+    alert("Failed to download file: " + err.message);
+  }
+}
+
+function formatCell(val: any, header: string) {
+  if (val === null || val === undefined) return "—";
+  if (typeof val === "object") return JSON.stringify(val);
+  if (typeof val === "boolean") return val ? "Yes" : "No";
+  if (header === "status" && typeof val === "string") {
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider
+        ${val === "on_time" || val === "complete" || val === "Active" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : ""}
+        ${val === "late" ? "bg-amber-100 text-amber-800 border border-amber-200" : ""}
+        ${val === "absent" || val === "Offline" ? "bg-rose-100 text-rose-800 border border-rose-200" : ""}
+        ${val === "excused" || val === "holiday" ? "bg-zinc-100 text-zinc-800 border border-zinc-200" : ""}
+        ${val === "present_unscheduled" ? "bg-blue-100 text-blue-800 border border-blue-200" : ""}
+      `}>
+        {val.replace("_", " ")}
+      </span>
+    );
+  }
+  if (typeof val === "string" && (header.includes("_at") || header.includes("occurred") || header.includes("actual") || header.includes("expected") || header.includes("observed"))) {
+    try {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleString();
+      }
+    } catch {}
+  }
+  return String(val);
+}
+
+const reportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reports",
+  component: function Reports() {
+    const [reportType, setReportType] = useState("daily_register");
+    const [dateFrom, setDateFrom] = useState(() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().split("T")[0];
+    });
+    const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+    const [groupId, setGroupId] = useState("");
+    const [personId, setPersonId] = useState("");
+    const [minAbsences, setMinAbsences] = useState(3);
+    const [activeTab, setActiveTab] = useState<"preview" | "jobs">("preview");
+    const [isExporting, setIsExporting] = useState<string | null>(null);
+    const [asyncBanner, setAsyncBanner] = useState<{ message: string; jobId: string } | null>(null);
+    const [overrideRow, setOverrideRow] = useState<any>(null);
+    const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+
+    const queryClient = useQueryClient();
+
+    const handleRemoveOverride = async (overrideId: string) => {
+      if (!confirm("Are you sure you want to remove this manual override?")) return;
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/attendance/overrides/${overrideId}`, {
+          method: "DELETE",
+          headers: {
+            "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70",
+          },
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "Failed to delete override");
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["report-preview"] });
+      } catch (err: any) {
+        alert(err.message);
+      }
+    };
+
+    // Query groups
+    const { data: groups } = useQuery({
+      queryKey: ["groups"],
+      queryFn: async () => {
+        const res = await fetch(`${apiBaseUrl}/api/groups`, {
+          headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+        });
+        if (!res.ok) throw new Error("Failed to fetch groups");
+        return res.json() as Promise<any[]>;
+      }
+    });
+
+    // Query people
+    const { data: people } = useQuery({
+      queryKey: ["people"],
+      queryFn: async () => {
+        const res = await fetch(`${apiBaseUrl}/api/people`, {
+          headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+        });
+        if (!res.ok) throw new Error("Failed to fetch people");
+        return res.json() as Promise<any[]>;
+      }
+    });
+
+    // Query preview
+    const { data: previewData, isLoading: isPreviewLoading, isError: isPreviewError } = useQuery({
+      queryKey: ["report-preview", reportType, dateFrom, dateTo, groupId, personId, minAbsences],
+      queryFn: async () => {
+        const params = new URLSearchParams({
+          report_type: reportType,
+          date_from: dateFrom || "",
+          date_to: dateTo || "",
+        });
+        if (groupId) params.append("group_id", groupId);
+        if (personId && reportType === "timesheet") params.append("person_id", personId);
+        if (reportType === "truancy") params.append("min_absences", String(minAbsences));
+
+        const res = await fetch(`${apiBaseUrl}/api/reports/preview?${params.toString()}`, {
+          headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+        });
+        if (!res.ok) throw new Error("Failed to fetch report preview");
+        return res.json();
+      }
+    });
+
+    // Query background jobs (poll if there are pending jobs)
+    const { data: jobs } = useQuery({
+      queryKey: ["report-jobs"],
+      queryFn: async () => {
+        const res = await fetch(`${apiBaseUrl}/api/reports/jobs`, {
+          headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+        });
+        if (!res.ok) throw new Error("Failed to fetch jobs");
+        return res.json() as Promise<any[]>;
+      },
+      refetchInterval: (query) => {
+        const hasPending = query.state.data?.some(j => j.status === "pending");
+        return hasPending ? 3000 : false;
+      }
+    });
+
+    const handleExport = async (format: string) => {
+      setIsExporting(format);
+      setAsyncBanner(null);
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/reports/export`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70",
+          },
+          body: JSON.stringify({
+            report_type: reportType,
+            format: format,
+            date_from: dateFrom || null,
+            date_to: dateTo || null,
+            group_id: groupId || null,
+            person_id: personId || null,
+            min_absences: minAbsences,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Export request failed");
+        }
+
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data.status === "pending") {
+            setAsyncBanner({
+              message: `Dataset contains ${data.row_count} rows and is being processed in the background.`,
+              jobId: data.job_id
+            });
+            setActiveTab("jobs");
+            queryClient.invalidateQueries({ queryKey: ["report-jobs"] });
+          }
+        } else {
+          // Direct file download
+          const blob = await res.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = `${reportType}_export.${format}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }
+      } catch (err: any) {
+        alert("Export failed: " + err.message);
+      } finally {
+        setIsExporting(null);
+      }
+    };
+
+    const handleDownloadJob = async (jobId: string, format: string, type: string) => {
+      const url = `${apiBaseUrl}/api/reports/jobs/${jobId}/download`;
+      const filename = `${type}_async_export.${format}`;
+      await handleDownloadFile(url, filename);
+    };
+
+    return (
+      <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Reports & Export</h1>
+          <p className="text-zinc-500 mt-1">Generate dynamic registers, sheets, and analytics exports.</p>
+        </div>
+
+        {asyncBanner && (
+          <div className="mb-6 bg-cyan-50 border border-cyan-200 text-cyan-800 p-4 rounded-2xl flex items-center justify-between shadow-sm animate-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-cyan-500 animate-ping shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">{asyncBanner.message}</p>
+                <p className="text-xs text-cyan-600 mt-0.5">Job ID: {asyncBanner.jobId}</p>
+              </div>
+            </div>
+            <button onClick={() => setAsyncBanner(null)} className="text-cyan-600 hover:text-cyan-800 font-medium text-sm">Dismiss</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Filters card */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm">
+              <h3 className="text-base font-semibold text-zinc-900 mb-4">Report Type</h3>
+              <select
+                value={reportType}
+                onChange={(e) => { setReportType(e.target.value); setPersonId(""); }}
+                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 py-2.5 px-3 border outline-none bg-zinc-50 font-medium text-sm text-zinc-800"
+              >
+                <option value="daily_register">Daily Register</option>
+                <option value="timesheet">Timesheet</option>
+                <option value="payroll_summary">Payroll Summary</option>
+                <option value="tardiness">Tardiness Report</option>
+                <option value="absence">Absence Report</option>
+                <option value="truancy">Truancy Report</option>
+                <option value="perfect_attendance">Perfect Attendance</option>
+                <option value="headcount_by_hour">Headcount By Hour</option>
+                <option value="muster_roll">Muster / Fire Roll</option>
+                <option value="exception_report">Exception Report</option>
+                <option value="device_health">Device Health Status</option>
+              </select>
+
+              <h3 className="text-base font-semibold text-zinc-900 mt-6 mb-4">Filters</h3>
+              <div className="space-y-4">
+                {reportType !== "muster_roll" && reportType !== "device_health" && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Date From</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Date To</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {reportType !== "muster_roll" && reportType !== "device_health" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Group Scope</label>
+                    <select
+                      value={groupId}
+                      onChange={(e) => setGroupId(e.target.value)}
+                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                    >
+                      <option value="">All Groups</option>
+                      {groups?.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {reportType === "timesheet" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Filter Person</label>
+                    <select
+                      value={personId}
+                      onChange={(e) => setPersonId(e.target.value)}
+                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                    >
+                      <option value="">All People</option>
+                      {people?.map((p) => (
+                        <option key={p.id} value={p.id}>{p.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {reportType === "truancy" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Min Absences Threshold</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={minAbsences}
+                      onChange={(e) => setMinAbsences(Number(e.target.value))}
+                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm space-y-3">
+              <h3 className="text-base font-semibold text-zinc-900 mb-2">Export Document</h3>
+              
+              <button
+                disabled={!!isExporting}
+                onClick={() => handleExport("csv")}
+                className="w-full flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white disabled:bg-zinc-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-zinc-900/10"
+              >
+                {isExporting === "csv" ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                )}
+                Export CSV Format
+              </button>
+
+              <button
+                disabled={!!isExporting}
+                onClick={() => handleExport("xlsx")}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-emerald-600/10"
+              >
+                {isExporting === "xlsx" ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                )}
+                Export Excel Spreadsheet
+              </button>
+
+              <button
+                disabled={!!isExporting}
+                onClick={() => handleExport("pdf")}
+                className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white disabled:bg-rose-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-rose-600/10"
+              >
+                {isExporting === "pdf" ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                )}
+                Export PDF Document
+              </button>
+            </div>
+          </div>
+
+          {/* Main output panel */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col h-[650px]">
+              <div className="flex border-b border-zinc-200 bg-zinc-50/50 p-2 shrink-0">
+                <button
+                  onClick={() => setActiveTab("preview")}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === "preview" ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-800"}`}
+                >
+                  Report Live Preview
+                </button>
+                <button
+                  onClick={() => setActiveTab("jobs")}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${activeTab === "jobs" ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-800"}`}
+                >
+                  Background Exports List
+                  {jobs && jobs.some(j => j.status === "pending") && (
+                    <span className="h-2 w-2 rounded-full bg-cyan-500 animate-ping" />
+                  )}
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {activeTab === "preview" ? (
+                  isPreviewLoading ? (
+                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
+                      <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mb-4" />
+                      <p className="text-sm font-medium">Running query and rendering preview...</p>
+                    </div>
+                  ) : isPreviewError ? (
+                    <div className="flex flex-col items-center justify-center h-full text-red-500">
+                      <svg className="w-12 h-12 mb-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                      <p className="font-semibold">Error querying report preview data.</p>
+                    </div>
+                  ) : !previewData || previewData.rows.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
+                      <svg className="w-12 h-12 mb-4 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <p className="font-semibold">No records match filters.</p>
+                    </div>
+                  ) : (
+                    <div className="w-full">
+                      <table className="w-full border-collapse text-left text-xs text-zinc-700">
+                        <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider">
+                          <tr>
+                            {previewData.headers.map((h: string) => (
+                              <th key={h} className="px-6 py-4 border-r border-zinc-200/50">{h.replace("_", " ")}</th>
+                            ))}
+                            {(reportType === "daily_register" || reportType === "timesheet") && (
+                              <th className="px-6 py-4 text-right">Actions</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {previewData.rows.map((row: any, rIdx: number) => (
+                            <tr key={rIdx} className="hover:bg-zinc-50 transition-colors">
+                              {previewData.headers.map((h: string) => (
+                                <td key={h} className="px-6 py-3.5 max-w-[200px] truncate border-r border-zinc-100/50">{formatCell(row[h], h)}</td>
+                              ))}
+                              {(reportType === "daily_register" || reportType === "timesheet") && (
+                                <td className="px-6 py-3.5 text-right font-medium whitespace-nowrap">
+                                  {row.override_id ? (
+                                    <button
+                                      onClick={() => handleRemoveOverride(row.override_id)}
+                                      className="text-rose-600 hover:text-rose-700 mr-3"
+                                    >
+                                      Remove Override
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    onClick={() => {
+                                      setOverrideRow(row);
+                                      setIsOverrideModalOpen(true);
+                                    }}
+                                    className="text-cyan-600 hover:text-cyan-700"
+                                  >
+                                    {row.override_id ? "Edit" : "Override"}
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                ) : (
+                  /* Background jobs list */
+                  !jobs || jobs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
+                      <svg className="w-12 h-12 mb-4 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7v12m0 0l-4-4m4 4l4-4m0 6V4" /></svg>
+                      <p className="font-semibold">No background export jobs found.</p>
+                    </div>
+                  ) : (
+                    <div className="w-full">
+                      <table className="w-full border-collapse text-left text-xs text-zinc-700">
+                        <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider">
+                          <tr>
+                            <th className="px-6 py-4">Report Type</th>
+                            <th className="px-6 py-4">Format</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Rows</th>
+                            <th className="px-6 py-4">Created Date</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {jobs.map((job) => (
+                            <tr key={job.id} className="hover:bg-zinc-50 transition-colors">
+                              <td className="px-6 py-4 font-medium text-zinc-950 capitalize">{job.report_type.replace("_", " ")}</td>
+                              <td className="px-6 py-4 uppercase font-bold text-[10px] text-zinc-500">{job.format}</td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wider capitalize
+                                  ${job.status === "completed" ? "bg-emerald-100 text-emerald-800" : ""}
+                                  ${job.status === "pending" ? "bg-cyan-100 text-cyan-800 animate-pulse" : ""}
+                                  ${job.status === "failed" ? "bg-rose-100 text-rose-800" : ""}
+                                `}>
+                                  {job.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 font-medium font-mono">{job.row_count !== null ? job.row_count.toLocaleString() : "—"}</td>
+                              <td className="px-6 py-4 text-zinc-500">{new Date(job.created_at).toLocaleString()}</td>
+                              <td className="px-6 py-4 text-right">
+                                {job.status === "completed" && (
+                                  <button
+                                    onClick={() => handleDownloadJob(job.id, job.format, job.report_type)}
+                                    className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs tracking-wider uppercase transition-colors"
+                                  >
+                                    Download
+                                  </button>
+                                )}
+                                {job.status === "pending" && (
+                                  <div className="inline-flex h-5 w-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+                                )}
+                                {job.status === "failed" && (
+                                  <span className="text-red-500 font-medium text-xs max-w-[120px] truncate block ml-auto" title={job.error_message || "Unknown error"}>
+                                    {job.error_message || "Failed"}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <OverrideModal
+          key={overrideRow?.id || 'new'}
+          isOpen={isOverrideModalOpen}
+          onClose={() => setIsOverrideModalOpen(false)}
+          onSuccess={() => {
+            setIsOverrideModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["report-preview"] });
+          }}
+          row={overrideRow}
+        />
+      </div>
+    );
+  }
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   peopleRoute,
   devicesRoute,
+  reportsRoute,
   settingsRoute,
 ]);
 

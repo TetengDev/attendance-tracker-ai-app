@@ -11,15 +11,20 @@ paths = [
   "backend/app/scan/**",
   "backend/__init__.py",
   "backend/app/__init__.py",
+  "backend/Dockerfile",
   "backend/tests/**",
   "docs/**",
   "frontend/packages/protocol/**",
+  "frontend/Dockerfile",
+  "infra/Caddyfile",
   "scripts/**",
+  "tests/**",
   "Makefile*",
   ".python-version",
   "pyproject.toml",
   "uv.lock",
   ".github/**",
+  ".agy/**",
 ]
 
 [[ownership]]
@@ -469,4 +474,29 @@ paths = [
   "frontend/apps/kiosk/src/App.tsx",
   ".gitignore",
 ]
+
+[[ownership]]
+issue = "phase-7-reports"
+paths = [
+  "backend/alembic/versions/591d22945307_add_report_jobs_table.py",
+  "backend/app/api/reports.py",
+  "backend/app/reports/**",
+  "backend/app/models/attendance.py",
+  "backend/tests/test_reports.py",
+  "frontend/apps/admin/src/pages/Reports.tsx",
+  "docs/ownership.toml",
+  "pyproject.toml",
+  "uv.lock",
+]
+
+[[ownership]]
+issue = "phase-8-notifications"
+paths = [
+  "backend/alembic/versions/*_add_notifications_tables.py",
+  "backend/app/models/notifications.py",
+  "backend/app/notifications/**",
+  "backend/tests/test_notifications.py",
+  "docs/ownership.toml",
+]
+
 
