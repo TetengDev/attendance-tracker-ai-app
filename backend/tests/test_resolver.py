@@ -25,10 +25,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.attendance.decision_table import AttendanceStatus
 from backend.app.models.attendance import (
@@ -237,7 +239,7 @@ class MockResult:
         return self
 
 
-class MockSession:
+class MockSession(AsyncSession):
     """A mock AsyncSession that returns pre-configured data based on SQL text."""
 
     def __init__(
@@ -261,6 +263,7 @@ class MockSession:
         expected_pairs: list[tuple[UUID, date]] | None = None,
         event_pairs: list[tuple[UUID, date]] | None = None,
     ) -> None:
+        super().__init__(bind=MagicMock())
         self.person = person or make_person()
         self.expected_rows = expected_rows if expected_rows is not None else []
         self.overrides = overrides if overrides is not None else []
@@ -283,7 +286,13 @@ class MockSession:
         self.committed: int = 0
         self.deleted_models: list[Any] = []
 
-    async def execute(self, statement: Any, params: Any = None) -> MockResult:
+    async def execute(
+        self,
+        statement: Any,
+        params: Any = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
         sql = str(statement)
         print(f"DEBUG SQL: {sql}")
 
@@ -330,11 +339,17 @@ class MockSession:
 
         return MockResult(None)
 
-    async def get(self, model: type, identifier: Any) -> Any:
+    async def get(
+        self,
+        entity: Any,
+        ident: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
         return self.person
 
-    def add(self, obj: Any) -> None:
-        self.added.append(obj)
+    def add(self, instance: Any, _warn: bool = True) -> None:
+        self.added.append(instance)
 
     async def commit(self) -> None:
         self.committed += 1
@@ -342,8 +357,11 @@ class MockSession:
     async def rollback(self) -> None:
         pass
 
-    async def flush(self) -> None:
+    async def flush(self, objects: Any = None) -> None:
         pass
+
+    async def delete(self, instance: Any) -> None:
+        self.deleted_models.append(instance)
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +606,7 @@ async def test_incomplete_auto_close() -> None:
         s["attendance.auto_close_minutes"] = 30
         return ResolvedSettings(settings=s, settings_version=1)
 
-    resolver_mod.resolve_db_settings = mock_settings_autoclose  # type: ignore[assignment]
+    resolver_mod.resolve_db_settings = mock_settings_autoclose
 
     expected = make_expected()
     # Single arrival event (no departure)
@@ -689,7 +707,11 @@ async def test_merged_person_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Create session that returns merged person first, then canonical
     class MergeSession(MockSession):
-        async def execute(self, statement: Any, params: Any = None) -> MockResult:
+        _person_call_count: int = 0
+
+        async def execute(
+            self, statement: Any, params: Any = None, *args: Any, **kwargs: Any
+        ) -> Any:
             sql = str(statement)
             print(f"MERGESESSION EXECUTE SQL: {sql}")
             if "FROM people" in sql or "people" in sql:

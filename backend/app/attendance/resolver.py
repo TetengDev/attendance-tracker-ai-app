@@ -643,7 +643,7 @@ async def expand_schedules(
                 shift_id=matched_rule.shift_id or UUID("00000000-0000-0000-0000-000000000000"),
                 period_label=matched_rule.period_label,
             )
-            
+
             # Check if expected row changed
             if (
                 not existing_expected
