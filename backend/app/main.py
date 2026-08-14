@@ -18,8 +18,10 @@ from backend.app.api.enrollment import router as enrollment_router
 from backend.app.api.groups import router as groups_router
 from backend.app.api.health import router as health_router
 from backend.app.api.locations import router as locations_router
+from backend.app.api.overrides import router as overrides_router
 from backend.app.api.people import router as people_router
 from backend.app.api.people_merge import router as people_merge_router
+from backend.app.api.reports import router as reports_router
 from backend.app.api.sessions import router as sessions_router
 from backend.app.api.settings import router as settings_router
 from backend.app.api.ws_enroll import router as ws_enroll_router
@@ -107,6 +109,8 @@ def create_app() -> FastAPI:
     app.include_router(device_pairing_router)
     app.include_router(dashboard_router)
     app.include_router(settings_router)
+    app.include_router(reports_router)
+    app.include_router(overrides_router)
     return app
 
 
