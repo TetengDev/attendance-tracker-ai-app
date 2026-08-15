@@ -1,0 +1,29 @@
+# Caddy configuration for Aegis Attendance Tracker
+{
+    local_certs
+}
+
+# Admin Dashboard & Backend API
+{$DOMAIN:http://localhost} {
+    root * /srv/admin
+    file_server
+    
+    # SPA routing fallback for TanStack Router
+    try_files {path} /index.html
+    
+    # Proxy API and WebSocket requests to the backend container
+    reverse_proxy /api/* backend:8000
+    reverse_proxy /ws backend:8000
+}
+
+# Kiosk App
+{$KIOSK_DOMAIN:http://kiosk.localhost} {
+    root * /srv/kiosk
+    file_server
+    
+    # SPA routing fallback
+    try_files {path} /index.html
+    
+    # Proxy API requests to the backend container
+    reverse_proxy /api/* backend:8000
+}
