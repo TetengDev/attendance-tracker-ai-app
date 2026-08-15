@@ -568,6 +568,10 @@ async def kiosk_websocket_endpoint(
                     session.add(event)
                     await session.commit()
 
+                    from backend.app.auth.device import check_device_anomaly
+
+                    await check_device_anomaly(session, device.id)
+
                     # Send result
                     await websocket.send_json(
                         Result(
@@ -840,6 +844,10 @@ async def kiosk_websocket_endpoint(
                         )
                         session.add(event)
                         await session.commit()
+
+                        from backend.app.auth.device import check_device_anomaly
+
+                        await check_device_anomaly(session, device.id)
 
                         # Send result
                         await websocket.send_json(

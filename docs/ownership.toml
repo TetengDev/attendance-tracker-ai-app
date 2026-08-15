@@ -510,3 +510,23 @@ paths = [
   "docs/privacy-compliance.md",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "phase-10-reembed"
+paths = [
+  "backend/alembic/versions/1a44f9eaf8c3_add_filename_to_enrollment_assets.py",
+  "backend/app/api/enrollment.py",
+  "backend/app/api/ws_scan.py",
+  "backend/app/attendance/resolver.py",
+  "backend/app/auth/device.py",
+  "backend/app/cli/seed.py",
+  "backend/app/cli/re_embed.py",
+  "backend/app/models/biometrics.py",
+  "backend/tests/test_ws_scan.py",
+  "backend/tests/test_re_embed.py",
+  "docs/model-migration-runbook.md",
+  "docs/production-ops-runbook.md",
+  "frontend/apps/kiosk/src/App.tsx",
+  "infra/compose.yml",
+  "docs/ownership.toml",
+]

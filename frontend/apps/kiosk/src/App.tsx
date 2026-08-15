@@ -640,7 +640,7 @@ export function App() {
     if (reason.includes("blurry")) {
       return "Hold Still - Focusing";
     }
-    if (reason.includes("invalid_luma") && metrics) {
+    if (reason.includes("invalid_luma") && metrics && metrics.luma !== null && metrics.luma !== undefined) {
       const minLuma = relaxedGating ? 15 : 40;
       const maxLuma = relaxedGating ? 245 : 220;
       if (metrics.luma < minLuma) {

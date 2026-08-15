@@ -80,6 +80,37 @@ services:
       retries: 10
       start_period: 5s
 
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://attendance:attendance@postgres:5432/attendance
+      REDIS_URL: redis://redis-store:6379/0
+      BIOMETRIC_KEK: ${BIOMETRIC_KEK}
+      SECRET_KEY: ${SECRET_KEY}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-store:
+        condition: service_healthy
+    command: sh -c "alembic -c backend/alembic.ini upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+
+  caddy-frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-http://localhost}
+      KIOSK_DOMAIN: ${KIOSK_DOMAIN:-http://kiosk.localhost}
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   redis_store_data:

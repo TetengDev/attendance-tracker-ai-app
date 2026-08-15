@@ -147,6 +147,9 @@ class EnrollmentAsset(EncryptedPayloadColumns, Base):
     kind: Mapped[EnrollmentAssetKind] = mapped_column(String(32), nullable=False)
     capture_pose: Mapped[EnrollmentPose] = mapped_column(String(32), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    filename: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="capture", server_default="capture"
+    )
     byte_size: Mapped[int] = mapped_column(nullable=False)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
