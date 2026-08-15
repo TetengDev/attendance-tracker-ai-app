@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -446,3 +446,108 @@ def test_supervisor_cannot_read_org_wide_groups(monkeypatch: MonkeyPatch) -> Non
 
     assert response.status_code == 403
     assert response.json()["detail"] == "admin role cannot manage org-wide resources"
+
+
+def test_person_erase_endpoint(monkeypatch: MonkeyPatch) -> None:
+    from backend.app.api.enrollment import get_face_engine, get_gallery_index
+
+    person_id = UUID("00000000-0000-0000-0000-000000000099")
+    person = Person(
+        id=person_id,
+        kind=PersonKind.STUDENT,
+        display_name="John Doe",
+        preferred_name="Johnny",
+        external_id="ext-99",
+        is_active=True,
+    )
+
+    class FakePeopleService:
+        async def get(
+            self,
+            _session: AsyncSession,
+            _admin_user: AdminUser,
+            _person_id: UUID,
+            *,
+            business_date: object,
+        ) -> Person:
+            return person
+
+    class FakeGalleryIndex:
+        reloaded = False
+
+        async def reload_if_stale(
+            self,
+            _session: AsyncSession,
+            load_entries: object,
+        ) -> bool:
+            self.reloaded = True
+            return True
+
+    class FakeFaceEngine:
+        model_name = "test-model"
+        model_version = "v1"
+
+    class EraseSession:
+        committed = False
+        executed_deletes = 0
+
+        async def commit(self) -> None:
+            self.committed = True
+
+        def add(self, obj: object) -> None:
+            pass
+
+        async def flush(self) -> None:
+            pass
+
+        async def execute(
+            self,
+            statement: object,
+            params: Any = None,
+            *args: Any,
+            **kwargs: Any,
+        ) -> object:
+            if "DELETE FROM face_embeddings" in str(statement):
+                self.executed_deletes += 1
+
+            class FakeResult:
+                def scalar_one_or_none(self_inner: object) -> object:
+                    return None
+
+                def scalar_one(self_inner: object) -> object:
+                    return 2
+
+            return FakeResult()
+
+    app = _authenticated_app(monkeypatch)
+    app.dependency_overrides[get_people_service] = lambda: FakePeopleService()
+
+    gallery_inst = FakeGalleryIndex()
+    app.dependency_overrides[get_gallery_index] = lambda: gallery_inst
+    app.dependency_overrides[get_face_engine] = lambda: FakeFaceEngine()
+
+    erase_sess = EraseSession()
+
+    async def get_erase_sess() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, erase_sess)
+
+    app.dependency_overrides[get_session] = get_erase_sess
+
+    with TestClient(app) as client:
+        response = client.post(f"/api/people/{person_id}/erase")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    # Verify PII fields have been cleared/nulled out
+    assert person.display_name == "Erased Person"
+    assert person.preferred_name is None
+    assert person.external_id is None
+    assert not person.is_active
+
+    # Verify session deletions & commits
+    assert erase_sess.executed_deletes == 1
+    assert erase_sess.committed
+
+    # Verify gallery index convergence was triggered
+    assert gallery_inst.reloaded

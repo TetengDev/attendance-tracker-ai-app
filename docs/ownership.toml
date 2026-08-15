@@ -500,3 +500,13 @@ paths = [
   "backend/tests/test_notifications_channels.py",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "phase-9-privacy"
+paths = [
+  "backend/app/api/people.py",
+  "backend/app/settings/registry.py",
+  "backend/tests/test_core_crud_api.py",
+  "docs/privacy-compliance.md",
+  "docs/ownership.toml",
+]
