@@ -122,7 +122,7 @@ def test_wrong_kek_and_tampered_payloads_fail_closed() -> None:
             keyring=keyring_for(key),
         )
         print(f"DEBUG_DECRYPT: Decrypted successfully, len={len(res)}, values={res[:5]}...", file=sys.stderr)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"DEBUG_DECRYPT: Raised exception {type(exc).__name__}: {exc}", file=sys.stderr)
 
     with pytest.raises(InvalidTag):
