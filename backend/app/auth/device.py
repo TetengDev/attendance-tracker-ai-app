@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 import jwt
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Token hashing & verification ──────────────────────────────────────────
 
@@ -140,3 +141,30 @@ class InMemoryRevocationRegistry(RevocationRegistry):
 
 
 global_revocation_registry = InMemoryRevocationRegistry()
+
+
+async def check_device_anomaly(session: AsyncSession, device_id: UUID) -> None:
+    """Verify that a device has not processed too many distinct identities in the last hour."""
+    import logging
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func, select
+
+    from backend.app.models.attendance import AttendanceEvent
+
+    logger = logging.getLogger(__name__)
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    stmt = select(func.count(func.distinct(AttendanceEvent.person_id))).where(
+        AttendanceEvent.device_id == device_id,
+        AttendanceEvent.occurred_at >= one_hour_ago,
+        AttendanceEvent.person_id.is_not(None),
+    )
+    result = await session.execute(stmt)
+    distinct_count = result.scalar() or 0
+
+    if distinct_count > 30:
+        logger.warning(
+            "ANOMALY ALERT: Device %s has processed %d distinct identities in the last hour (exceeded threshold of 30)",
+            device_id,
+            distinct_count,
+        )

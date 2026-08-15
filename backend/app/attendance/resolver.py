@@ -278,6 +278,7 @@ async def resolve(
                 # Stale out-of-order execution, skip
                 return
 
+            old_status = existing.status if existing else None
             status = AttendanceStatus.PRESENT_UNSCHEDULED
             override = overrides_by_grain.get((dummy_shift_id, period_label))
             if override:
@@ -307,6 +308,9 @@ async def resolve(
             record.expected_attendance_id = None
             session.add(record)
             resolved_grains.add((dummy_shift_id, period_label))
+            from backend.app.notifications.service import process_record_notifications
+
+            await process_record_notifications(session, record, old_status)
     else:
         # Loop expected rows
         for expected in expected_rows:
@@ -314,6 +318,8 @@ async def resolve(
             if existing and existing.resolved_at > as_of:
                 # Stale out-of-order execution, skip
                 continue
+
+            old_status = existing.status if existing else None
 
             # Load settings scoped to this location
             context = SettingContext(location_id=expected.location_id)
@@ -440,6 +446,9 @@ async def resolve(
             record.resolved_at = as_of
             session.add(record)
             resolved_grains.add((expected.shift_id, expected.period_label))
+            from backend.app.notifications.service import process_record_notifications
+
+            await process_record_notifications(session, record, old_status)
 
     # Delete any stale/obsolete records for this person and date that were not resolved in this pass
     for grain, rec in existing_by_grain.items():

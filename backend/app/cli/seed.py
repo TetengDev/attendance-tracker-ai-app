@@ -28,20 +28,18 @@ SEED_DEVICE_PREFIX = "dev_seed"
 
 async def seed() -> None:
     async with get_session_factory()() as session, session.begin():
-        admin = (
-            await session.execute(select(AdminUser).where(AdminUser.email == SEED_ADMIN_EMAIL))
-        ).scalar_one_or_none()
-        if admin is None:
-            session.add(
-                AdminUser(
-                    email=SEED_ADMIN_EMAIL,
-                    display_name="Seed Admin",
-                    password_hash=hash_admin_password(SEED_ADMIN_PASSWORD),
-                    role=AdminRole.OWNER,
-                    totp_secret=generate_totp_secret(),
-                    password_changed_at=datetime.now(UTC),
-                )
+        await session.execute(delete(AdminUser).where(AdminUser.email == SEED_ADMIN_EMAIL))
+        session.add(
+            AdminUser(
+                id=UUID("14d75b41-d558-4a73-9369-93f32ef86a70"),
+                email=SEED_ADMIN_EMAIL,
+                display_name="Seed Admin",
+                password_hash=hash_admin_password(SEED_ADMIN_PASSWORD),
+                role=AdminRole.OWNER,
+                totp_secret=generate_totp_secret(),
+                password_changed_at=datetime.now(UTC),
             )
+        )
 
         location = (
             await session.execute(select(Location).where(Location.name == SEED_LOCATION_NAME))

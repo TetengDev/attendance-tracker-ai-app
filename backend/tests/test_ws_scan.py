@@ -142,6 +142,11 @@ class MockSession:
             def scalar_one_or_none(self) -> Any:
                 return self._value
 
+            def scalar(self) -> Any:
+                return self._value
+
+        if "count(" in sql.lower():
+            return MockResult(0)
         if "FROM settings_versions" in sql:
             if "gallery" in sql or "GALLERY" in sql:
                 return MockResult(self.gallery_version)
@@ -725,3 +730,56 @@ class TestWebSocketFrameBurst:
             diff = event.server_received_at - event.occurred_at
             assert abs(diff.total_seconds() - 30.0) < 1.0
             assert event.client_captured_at == event.occurred_at
+
+
+@pytest.mark.anyio
+async def test_check_device_anomaly_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    from backend.app.auth.device import check_device_anomaly
+
+    class FakeAnomalyResult:
+        def scalar(self) -> int:
+            return 35
+
+    class FakeAnomalySession:
+        async def execute(self, statement: object) -> FakeAnomalyResult:
+            return FakeAnomalyResult()
+
+    device_id = uuid4()
+    session = cast(AsyncSession, FakeAnomalySession())
+
+    with caplog.at_level(logging.WARNING):
+        await check_device_anomaly(session, device_id)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "ANOMALY ALERT" in warnings[0].message
+    assert str(device_id) in warnings[0].message
+    assert "35 distinct identities" in warnings[0].message
+
+
+@pytest.mark.anyio
+async def test_check_device_anomaly_does_not_log_below_threshold(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    from backend.app.auth.device import check_device_anomaly
+
+    class FakeAnomalyResult:
+        def scalar(self) -> int:
+            return 5
+
+    class FakeAnomalySession:
+        async def execute(self, statement: object) -> FakeAnomalyResult:
+            return FakeAnomalyResult()
+
+    device_id = uuid4()
+    session = cast(AsyncSession, FakeAnomalySession())
+
+    with caplog.at_level(logging.WARNING):
+        await check_device_anomaly(session, device_id)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 0

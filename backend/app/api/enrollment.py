@@ -275,6 +275,7 @@ class EnrollmentService:
             kind=EnrollmentAssetKind.ORIGINAL_IMAGE,
             capture_pose=candidate.pose,
             content_type=candidate.content_type,
+            filename=candidate.filename,
             byte_size=len(candidate.payload),
             checksum_sha256=hashlib.sha256(candidate.payload).hexdigest(),
             captured_at=now,
