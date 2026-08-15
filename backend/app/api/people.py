@@ -23,7 +23,10 @@ from backend.app.api.common import (
     snapshot,
     translate_crud_error,
 )
+from backend.app.api.enrollment import get_face_engine, get_gallery_index
 from backend.app.auth.rbac import scoped_people_query
+from backend.app.face.gallery import GalleryIndex
+from backend.app.face.protocol import FaceEngine
 from backend.app.models.admin import AdminUser
 from backend.app.models.people import Person, PersonKind
 
@@ -285,3 +288,68 @@ async def delete_person(
         await commit_or_422(session)
     except CrudError as exc:
         raise translate_crud_error(exc) from exc
+
+
+@router.post("/{person_id}/erase", status_code=200)
+async def erase_person(
+    person_id: UUID,
+    session: SessionDep,
+    service: PeopleServiceDep,
+    admin_user: AdminUserDep,
+    actor: ActorDep,
+    business_date: BusinessDateQuery,
+    gallery_index: Annotated[GalleryIndex, Depends(get_gallery_index)],
+    face_engine: Annotated[FaceEngine, Depends(get_face_engine)],
+) -> dict[str, str]:
+    from sqlalchemy import delete
+
+    from backend.app.face.gallery import GalleryEntry, bump_gallery_version
+    from backend.app.models.biometrics import FaceEmbedding
+
+    try:
+        # 1. Fetch the person (RBAC scoped)
+        person = await service.get(session, admin_user, person_id, business_date=business_date)
+        before = snapshot(person, PERSON_FIELDS)
+
+        # 2. Hard-delete FaceEmbedding records
+        await session.execute(delete(FaceEmbedding).where(FaceEmbedding.person_id == person_id))
+
+        # 3. Null PII fields on Person
+        person.display_name = "Erased Person"
+        person.preferred_name = None
+        person.external_id = None
+        person.is_active = False
+        session.add(person)
+
+        # 4. Bump gallery version in DB
+        await bump_gallery_version(session)
+
+        # 5. Log audited mutation
+        actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
+        await audited_mutation(
+            session,
+            actor,
+            action="person.erase",
+            entity_type="person",
+            entity_id=str(person_id),
+            before=before,
+            after=snapshot(person, PERSON_FIELDS),
+        )
+        await commit_or_422(session)
+
+        # 6. Block on index convergence: reload the gallery index immediately
+        from backend.app.api.ws_scan import load_active_gallery_entries
+
+        async def load_entries_fn() -> list[GalleryEntry]:
+            return await load_active_gallery_entries(
+                session,
+                face_engine.model_name,
+                face_engine.model_version,
+            )
+
+        await gallery_index.reload_if_stale(session, load_entries_fn)
+
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
+    return {"status": "success", "message": "Person successfully erased and live index converged"}

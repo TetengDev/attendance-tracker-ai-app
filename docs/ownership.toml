@@ -502,6 +502,16 @@ paths = [
 ]
 
 [[ownership]]
+issue = "phase-9-privacy"
+paths = [
+  "backend/app/api/people.py",
+  "backend/app/settings/registry.py",
+  "backend/tests/test_core_crud_api.py",
+  "docs/privacy-compliance.md",
+  "docs/ownership.toml",
+]
+
+[[ownership]]
 issue = "phase-10-reembed"
 paths = [
   "backend/alembic/versions/1a44f9eaf8c3_add_filename_to_enrollment_assets.py",

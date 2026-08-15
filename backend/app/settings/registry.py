@@ -143,6 +143,8 @@ SETTINGS_SCHEMA: dict[str, SettingSpec] = {
     "privacy.region": SettingSpec(
         "enum", PrivacyRegion.PH.value, "O", enum=tuple(e.value for e in PrivacyRegion)
     ),
+    "privacy.dpo_name": SettingSpec("str", "Not Appointed", "O", max_length=120),
+    "privacy.dpo_contact": SettingSpec("str", "dpo@example.org", "O", max_length=120),
     "privacy.store_enrollment_originals": SettingSpec("bool", True, "O"),
     "privacy.store_failed_scans": SettingSpec("bool", False, "O"),
     "privacy.debug_capture_mode": SettingSpec("bool", False, "O·D", note="auto-expires 24h"),
