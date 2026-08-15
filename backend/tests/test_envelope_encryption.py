@@ -115,16 +115,6 @@ def test_wrong_kek_and_tampered_payloads_fail_closed() -> None:
     with pytest.raises(InvalidTag):
         decrypt_embedding(encrypted, aad=b"row:1", keyring=keyring_for(wrong_key))
 
-    try:
-        res = decrypt_embedding(
-            replace(encrypted, ciphertext=encrypted.ciphertext[:-1] + b"\x00"),
-            aad=b"row:1",
-            keyring=keyring_for(key),
-        )
-        print(f"DEBUG_DECRYPT: Decrypted successfully, len={len(res)}, values={res[:5]}...", file=sys.stderr)
-    except Exception as exc:  # noqa: BLE001
-        print(f"DEBUG_DECRYPT: Raised exception {type(exc).__name__}: {exc}", file=sys.stderr)
-
     with pytest.raises(InvalidTag):
         decrypt_embedding(
             replace(encrypted, ciphertext=encrypted.ciphertext[:-1] + b"\x00"),
