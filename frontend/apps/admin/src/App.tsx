@@ -24,10 +24,11 @@ function Sidebar() {
     { to: "/devices", label: "Kiosks & Devices", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
     { to: "/reports", label: "Reports & Export", icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
     { to: "/settings", label: "Settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" },
+    { to: "/muster", label: "Emergency Muster Roll", icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z", isEmergency: true },
   ];
 
   return (
-    <div className="w-64 bg-zinc-950 text-white flex flex-col h-screen border-r border-zinc-800">
+    <div className="w-64 bg-zinc-950 text-white flex flex-col h-screen border-r border-zinc-800 no-print">
       <div className="p-6 flex items-center gap-3">
         <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -42,8 +43,15 @@ function Sidebar() {
           <Link
             key={item.to}
             to={item.to}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-white/5 active:bg-white/10"
-            activeProps={{ className: "bg-cyan-500/10 text-cyan-400 font-semibold" }}
+            className={item.isEmergency 
+              ? "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-rose-400 hover:text-white hover:bg-rose-500/10 active:bg-rose-500/20"
+              : "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-white/5 active:bg-white/10"
+            }
+            activeProps={{ 
+              className: item.isEmergency 
+                ? "bg-rose-500/25 text-rose-400 font-bold border-l-4 border-rose-500 pl-2" 
+                : "bg-cyan-500/10 text-cyan-400 font-semibold" 
+            }}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {item.label === "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
@@ -70,7 +78,7 @@ function AdminLayout() {
     <div className="flex min-h-screen bg-zinc-50 font-sans text-zinc-900">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-zinc-200 flex items-center justify-between px-8 shrink-0">
+        <header className="h-16 bg-white border-b border-zinc-200 flex items-center justify-between px-8 shrink-0 no-print">
           <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider">Console Overview</h2>
           <div className="flex items-center gap-4">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1618,12 +1626,165 @@ const reportsRoute = createRoute({
   }
 });
 
+const musterRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/muster",
+  component: function MusterRoll() {
+    const { data, isLoading, isError } = useQuery({
+      queryKey: ["muster-roll-preview"],
+      queryFn: async () => {
+        const res = await fetch(`${apiBaseUrl}/api/reports/preview?report_type=muster_roll`, {
+          headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+        });
+        if (!res.ok) throw new Error("Failed to fetch muster roll");
+        const json = await res.json();
+        // Save to cache
+        localStorage.setItem("aegis_cached_muster", JSON.stringify(json));
+        localStorage.setItem("aegis_cached_muster_time", String(Date.now()));
+        return json;
+      },
+      retry: 1,
+    });
+
+    // Determine state
+    let displayRows: any[] = [];
+    let isCached = false;
+    let cacheAgeStr = "";
+
+    if (data) {
+      displayRows = data.rows || [];
+    } else {
+      // Try to fallback to localStorage
+      const cachedStr = localStorage.getItem("aegis_cached_muster");
+      const cachedTimeStr = localStorage.getItem("aegis_cached_muster_time");
+      if (cachedStr) {
+        try {
+          const cachedJson = JSON.parse(cachedStr);
+          displayRows = cachedJson.rows || [];
+          isCached = true;
+          if (cachedTimeStr) {
+            const ms = Date.now() - Number(cachedTimeStr);
+            const mins = Math.floor(ms / 60000);
+            if (mins < 1) {
+              cacheAgeStr = "Just now";
+            } else if (mins < 60) {
+              cacheAgeStr = `${mins}m ago`;
+            } else {
+              const hrs = Math.floor(mins / 60);
+              cacheAgeStr = `${hrs}h ago`;
+            }
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+
+    return (
+      <div className="space-y-6 print-container w-full">
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            .no-print { display: none !important; }
+            body { background: white; color: black; font-family: sans-serif; }
+            .print-container { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; border: none !important; box-shadow: none !important; }
+            table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+            th, td { border: 1px solid #000 !important; padding: 6px !important; font-size: 11px !important; text-align: left; }
+            h1, h2 { color: black !important; }
+          }
+        `}} />
+
+        <div className="flex items-center justify-between no-print">
+          <div className="flex items-center gap-3">
+            <span className="flex h-3 w-3 relative">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isCached ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${isCached ? "bg-amber-500" : "bg-emerald-500"}`}></span>
+            </span>
+            <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Emergency Muster / Fire Roll</h1>
+          </div>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 px-5 rounded-xl text-sm transition-all duration-200 shadow-lg shadow-rose-600/10 active:scale-95"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+            Print Roster
+          </button>
+        </div>
+
+        <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+          isCached 
+            ? "bg-amber-50 border-amber-200 text-amber-800" 
+            : "bg-emerald-50 border-emerald-200 text-emerald-800"
+        }`}>
+          <div className="flex items-center gap-3">
+            {isCached ? (
+              <svg className="w-6 h-6 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            ) : (
+              <svg className="w-6 h-6 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            )}
+            <div>
+              <p className="font-bold text-sm">
+                {isCached ? "API UNREACHABLE - Showing Cached Roster" : "Live Evacuation Roster"}
+              </p>
+              <p className="text-xs opacity-90">
+                {isCached 
+                  ? `Showing the last successfully retrieved copy from ${cacheAgeStr}`
+                  : "Roster matches real-time server records."}
+              </p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="text-2xl font-black">{displayRows.length}</span>
+            <span className="text-xs uppercase font-bold tracking-wider block opacity-75">Present Inside</span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+          <table className="w-full border-collapse text-left text-xs text-zinc-700">
+            <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider no-print">
+              <tr>
+                <th className="px-6 py-4">Name</th>
+                <th className="px-6 py-4">External ID</th>
+                <th className="px-6 py-4">Group</th>
+                <th className="px-6 py-4">Location</th>
+                <th className="px-6 py-4">Device</th>
+                <th className="px-6 py-4">Checked In At</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {displayRows.map((row: any, idx: number) => (
+                <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                  <td className="px-6 py-3.5 font-semibold text-zinc-950">{row.name}</td>
+                  <td className="px-6 py-3.5 font-mono">{row.external_id || "—"}</td>
+                  <td className="px-6 py-3.5">{row.group_name || "—"}</td>
+                  <td className="px-6 py-3.5">{row.location_name || "—"}</td>
+                  <td className="px-6 py-3.5 font-mono">{row.device_name || "—"}</td>
+                  <td className="px-6 py-3.5 font-mono">
+                    {row.checked_in_at ? new Date(row.checked_in_at).toLocaleTimeString() : "—"}
+                  </td>
+                </tr>
+              ))}
+              {displayRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center py-10 text-zinc-400 font-medium text-sm">
+                    No individuals are currently marked as present inside.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   peopleRoute,
   devicesRoute,
   reportsRoute,
   settingsRoute,
+  musterRoute,
 ]);
 
 const router = createRouter({ routeTree });
