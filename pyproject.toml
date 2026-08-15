@@ -5,6 +5,7 @@ description = "Self-hosted face-recognition attendance tracker."
 readme = "CLAUDE.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "aiosmtplib>=5.1.2",
   "alembic>=1.18.5",
   "argon2-cffi>=25.1.0",
   "asyncpg>=0.31.0",
@@ -23,6 +24,7 @@ dependencies = [
   "redis>=8.1.0",
   "scikit-image>=0.26.0",
   "sqlalchemy>=2.0.51",
+  "twilio>=9.11.0",
   "uvicorn>=0.52.0",
   "weasyprint>=69.0",
   "websockets>=14.2",
