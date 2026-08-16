@@ -258,7 +258,7 @@ function EnrollPersonModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; on
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-1">Role / Kind</label>
               <select required name="kind" className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none">
-                <option value="employee">Employee</option>
+                <option value="staff">Staff / Employee</option>
                 <option value="student">Student</option>
                 <option value="visitor">Visitor</option>
                 <option value="contractor">Contractor</option>
@@ -272,6 +272,219 @@ function EnrollPersonModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; on
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function EditPersonModal({ person, isOpen, onClose, onSuccess }: { person: any; isOpen: boolean; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // States
+  const [displayName, setDisplayName] = useState("");
+  const [preferredName, setPreferredName] = useState("");
+  const [externalId, setExternalId] = useState("");
+  const [kind, setKind] = useState("staff");
+  const [isActive, setIsActive] = useState(true);
+
+  // Synchronize state when modal opens
+  React.useEffect(() => {
+    if (person && isOpen) {
+      setDisplayName(person.display_name || "");
+      setPreferredName(person.preferred_name || "");
+      setExternalId(person.external_id || "");
+      setKind(person.kind || "staff");
+      setIsActive(person.is_active !== false);
+      setError(null);
+    }
+  }, [person, isOpen]);
+
+  if (!isOpen || !person) return null;
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    
+    const payload = {
+      display_name: displayName,
+      preferred_name: preferredName || null,
+      external_id: externalId || null,
+      kind: kind,
+      is_active: isActive,
+    };
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/people/${person.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Failed to update person");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["people"] });
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
+        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-zinc-900">Edit Person Profile</h2>
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6">
+          {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Display Name</label>
+              <input 
+                required 
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                type="text" 
+                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800" 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Preferred Name</label>
+              <input 
+                value={preferredName}
+                onChange={(e) => setPreferredName(e.target.value)}
+                type="text" 
+                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800" 
+                placeholder="e.g. John"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">External ID</label>
+              <input 
+                value={externalId}
+                onChange={(e) => setExternalId(e.target.value)}
+                type="text" 
+                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800 font-mono text-sm" 
+                placeholder="e.g. EMP-1049"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Role / Kind</label>
+              <select 
+                required 
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800"
+              >
+                <option value="staff">Staff / Employee</option>
+                <option value="student">Student</option>
+                <option value="visitor">Visitor</option>
+                <option value="contractor">Contractor</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <input 
+                id="edit_is_active"
+                type="checkbox" 
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="h-4 w-4 rounded border-zinc-300 text-cyan-600 focus:ring-cyan-500"
+              />
+              <label htmlFor="edit_is_active" className="text-sm font-semibold text-zinc-700 select-none">
+                Active status in the system
+              </label>
+            </div>
+          </div>
+          <div className="mt-8 flex justify-end gap-3 border-t border-zinc-100 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="bg-cyan-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-sm shadow-cyan-600/20">
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeletePersonModal({ person, isOpen, onClose, onSuccess }: { person: any; isOpen: boolean; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isOpen || !person) return null;
+
+  async function handleDelete() {
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/people/${person.id}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70"
+        }
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Failed to delete person");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["people"] });
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
+        <div className="p-6 text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mb-4">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-zinc-900 mb-2">Delete Profile</h3>
+          <p className="text-sm text-zinc-500 mb-6">
+            Are you sure you want to delete <span className="font-semibold text-zinc-950">{person.display_name}</span>? 
+            This action is permanent and will delete all associated biometric templates and attendance records.
+          </p>
+          {error && <div className="mb-4 text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          <div className="flex justify-center gap-3">
+            <button 
+              type="button" 
+              onClick={onClose} 
+              className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 border border-zinc-200 rounded-xl"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button" 
+              onClick={handleDelete}
+              disabled={isSubmitting}
+              className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-xl text-sm font-medium disabled:opacity-50 transition-colors shadow-sm shadow-rose-600/20"
+            >
+              {isSubmitting ? "Deleting..." : "Delete Profile"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -538,6 +751,8 @@ const peopleRoute = createRoute({
   component: function People() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [capturePerson, setCapturePerson] = useState<any>(null);
+    const [editPerson, setEditPerson] = useState<any>(null);
+    const [deletePerson, setDeletePerson] = useState<any>(null);
     
     const { data: people, isLoading, isError, refetch } = useQuery({
       queryKey: ["people"],
@@ -560,6 +775,18 @@ const peopleRoute = createRoute({
           isOpen={!!capturePerson} 
           onClose={() => setCapturePerson(null)} 
           onSuccess={() => { setCapturePerson(null); refetch(); }} 
+        />
+        <EditPersonModal 
+          person={editPerson} 
+          isOpen={!!editPerson} 
+          onClose={() => setEditPerson(null)} 
+          onSuccess={() => { setEditPerson(null); refetch(); }} 
+        />
+        <DeletePersonModal 
+          person={deletePerson} 
+          isOpen={!!deletePerson} 
+          onClose={() => setDeletePerson(null)} 
+          onSuccess={() => { setDeletePerson(null); refetch(); }} 
         />
         
         <div className="flex items-center justify-between mb-8">
@@ -615,13 +842,27 @@ const peopleRoute = createRoute({
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => setCapturePerson(p)} className="text-cyan-600 hover:text-cyan-700 font-medium text-sm flex items-center gap-1 justify-end ml-auto">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Capture Face
-                      </button>
+                      <div className="flex items-center justify-end gap-3.5">
+                        <button type="button" onClick={() => setCapturePerson(p)} className="text-cyan-600 hover:text-cyan-700 font-medium text-xs flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Capture Face
+                        </button>
+                        <button type="button" onClick={() => setEditPerson(p)} className="text-zinc-600 hover:text-zinc-900 font-medium text-xs flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => setDeletePerson(p)} className="text-rose-600 hover:text-rose-700 font-medium text-xs flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
