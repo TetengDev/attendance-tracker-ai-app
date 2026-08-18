@@ -328,3 +328,156 @@ def test_public_unsubscribe(app_with_notifications: tuple[FastAPI, FakeSession])
         assert "successfully unsubscribed" in response.text
         assert guardian.preferred_channel == ContactChannel.NONE
         assert pg_link.receives_attendance_alerts is False
+
+
+def test_admin_only_endpoints_reject_non_admin(app_with_notifications: tuple[FastAPI, FakeSession]) -> None:
+    app, _ = app_with_notifications
+    app.dependency_overrides[authenticated_admin_user] = lambda: _admin_user(role=AdminRole.VIEWER)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/notifications/rules",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+        )
+        assert response.status_code == 403
+
+        response = client.post(
+            "/api/notifications/rules",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            json={
+                "trigger_status": "late",
+                "delay_minutes": 5,
+                "channel": "email",
+                "template": "Hello",
+                "is_active": True,
+            },
+        )
+        assert response.status_code == 403
+
+        response = client.get(
+            f"/api/notifications/rules/{uuid4()}",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+        )
+        assert response.status_code == 403
+
+
+def test_endpoints_return_404_for_nonexistent_rules(app_with_notifications: tuple[FastAPI, FakeSession]) -> None:
+    app, session = app_with_notifications
+    session.rule = None
+
+    rule_id = uuid4()
+    with TestClient(app) as client:
+        response = client.get(
+            f"/api/notifications/rules/{rule_id}",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+        )
+        assert response.status_code == 404
+
+        response = client.put(
+            f"/api/notifications/rules/{rule_id}",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            json={"template": "Some template"},
+        )
+        assert response.status_code == 404
+
+        response = client.delete(
+            f"/api/notifications/rules/{rule_id}",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+        )
+        assert response.status_code == 404
+
+
+def test_unsubscribe_invalid_or_expired_tokens(app_with_notifications: tuple[FastAPI, FakeSession]) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+
+    from backend.app.config import get_settings
+
+    app, _ = app_with_notifications
+    settings = get_settings()
+
+    expired_payload = {
+        "sub": str(uuid4()),
+        "purpose": "unsubscribe",
+        "exp": datetime.now(UTC) - timedelta(hours=1),
+    }
+    expired_token = jwt.encode(
+        expired_payload,
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+
+    missing_exp_payload = {
+        "sub": str(uuid4()),
+        "purpose": "unsubscribe",
+    }
+    missing_exp_token = jwt.encode(
+        missing_exp_payload,
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+
+    missing_sub_payload = {
+        "purpose": "unsubscribe",
+        "exp": datetime.now(UTC) + timedelta(hours=1),
+    }
+    missing_sub_token = jwt.encode(
+        missing_sub_payload,
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+
+    wrong_purpose_payload = {
+        "sub": str(uuid4()),
+        "purpose": "auth",
+        "exp": datetime.now(UTC) + timedelta(hours=1),
+    }
+    wrong_purpose_token = jwt.encode(
+        wrong_purpose_payload,
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+
+    invalid_uuid_payload = {
+        "sub": "not-a-uuid",
+        "purpose": "unsubscribe",
+        "exp": datetime.now(UTC) + timedelta(hours=1),
+    }
+    invalid_uuid_token = jwt.encode(
+        invalid_uuid_payload,
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+
+    with TestClient(app) as client:
+        for token in [
+            expired_token,
+            missing_exp_token,
+            missing_sub_token,
+            wrong_purpose_token,
+            invalid_uuid_token,
+            "completely-invalid",
+        ]:
+            response = client.get(f"/api/notifications/unsubscribe?token={token}")
+            assert response.status_code == 400
+            assert "invalid" in response.text.lower() or "expired" in response.text.lower()
+
+
+def test_rule_creation_fails_with_invalid_jinja2(app_with_notifications: tuple[FastAPI, FakeSession]) -> None:
+    app, _ = app_with_notifications
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/notifications/rules",
+            headers={"x-admin-id": "00000000-0000-0000-0000-0000000000ad"},
+            json={
+                "trigger_status": "late",
+                "delay_minutes": 5,
+                "channel": "email",
+                "template": "Hello {{ person_name is late",
+                "is_active": True,
+            },
+        )
+        assert response.status_code == 400
+        assert "Invalid template syntax" in response.json()["detail"]
