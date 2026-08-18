@@ -548,3 +548,13 @@ paths = [
   "docs/ownership.toml",
 ]
 
+[[ownership]]
+issue = "phase-9-notifications-extended"
+paths = [
+  "backend/app/notifications/service.py",
+  "backend/app/api/ws_scan.py",
+  "backend/tests/test_notifications.py",
+  "backend/tests/test_ws_scan.py",
+  "docs/ownership.toml",
+]
+
