@@ -358,12 +358,12 @@ async def test_process_record_notifications_queues_retraction_for_sent() -> None
     retraction = next(n for n in session.added if n.type == "retraction")
     assert retraction.status == NotificationStatus.PENDING
     assert "Correction" in retraction.message_body
-    assert "08:25:00" in retraction.message_body  # Contains arrival time
+    assert "16:25:00" in retraction.message_body  # Contains arrival time
 
     late_alert = next(n for n in session.added if n.type == "late")
     assert late_alert.status == NotificationStatus.PENDING
     assert "arrived late" in late_alert.message_body
-    assert "08:25:00" in late_alert.message_body
+    assert "16:25:00" in late_alert.message_body
 
 
 @pytest.mark.anyio
@@ -609,5 +609,5 @@ async def test_process_record_notifications_late_alert() -> None:
     assert notif.recipient == "+639000000000"
     assert notif.channel == ContactChannel.SMS
     assert "arrived late" in notif.message_body
-    assert "08:15:00" in notif.message_body
+    assert "16:15:00" in notif.message_body
 

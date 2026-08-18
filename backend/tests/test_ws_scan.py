@@ -501,9 +501,9 @@ class TestWebSocketFrameBurst:
         mock_session: MockSession,
         test_engine: FakeFaceEngine,
         test_gallery: GalleryIndex,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # Register mock email channel
-        from backend.app.notifications.channels import set_email_channel
+        # Register mock email channel using monkeypatch to avoid state leak
 
         class MockEmailChannel:
             def __init__(self) -> None:
@@ -513,7 +513,7 @@ class TestWebSocketFrameBurst:
                 self.sent_emails.append((recipient, message, subject))
 
         mock_email_chan = MockEmailChannel()
-        set_email_channel(cast(Any, mock_email_chan))
+        monkeypatch.setattr("backend.app.notifications.channels.registry._email_channel", mock_email_chan)
 
         # Spoof frame
         test_engine.next_result(person="alice", score=0.9, liveness=0.1, n_faces=1)
@@ -557,11 +557,11 @@ class TestWebSocketFrameBurst:
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.LIVENESS_FAILED.value
 
-        # Give background tasks time to yield/execute
-        import asyncio
-        async def wait_tasks() -> None:
-            await asyncio.sleep(0.1)
-        asyncio.run(wait_tasks())
+        # Poll until the background task dispatches the email
+        import time
+        start_time = time.time()
+        while len(mock_email_chan.sent_emails) == 0 and time.time() - start_time < 2.0:
+            time.sleep(0.01)
 
         # Assert that email alert was sent
         assert len(mock_email_chan.sent_emails) == 1

@@ -82,11 +82,17 @@ async def process_record_notifications(
 
     Queues new notifications or retracts/cancels existing pending notifications.
     """
+    if old_status is not None and record.status == old_status:
+        return
+
     # Only students get guardian alerts generally
     person_stmt = (
         select(Person)
         .where(Person.id == record.person_id)
-        .options(selectinload(Person.guardians).selectinload(PersonGuardian.guardian))
+        .options(
+            selectinload(Person.guardians).selectinload(PersonGuardian.guardian),
+            selectinload(Person.group_memberships),
+        )
     )
     person = (await session.execute(person_stmt)).scalar_one_or_none()
     if not person or not person.is_active or not person.guardians:
@@ -94,11 +100,19 @@ async def process_record_notifications(
 
     # Load expected attendance to calculate schedule start time / settings context
     expected = None
+    location_tz = "Asia/Manila"
     if record.expected_attendance_id:
         expected_stmt = select(ExpectedAttendance).where(
             ExpectedAttendance.id == record.expected_attendance_id
         )
         expected = (await session.execute(expected_stmt)).scalar_one_or_none()
+        if expected and expected.location_id:
+            from backend.app.models.devices import Location
+
+            loc_stmt = select(Location).where(Location.id == expected.location_id)
+            loc = (await session.execute(loc_stmt)).scalar_one_or_none()
+            if loc and loc.timezone:
+                location_tz = loc.timezone
 
     # Load shift info for template naming
     shift_name = "Regular"
@@ -250,8 +264,8 @@ async def process_record_notifications(
                     )
                     event = (await session.execute(event_stmt)).scalar_one_or_none()
                     if event:
-                        # Format as local Manila time or local time format
-                        arrival_time = event.occurred_at.astimezone(UTC).strftime("%H:%M:%S")
+                        from zoneinfo import ZoneInfo
+                        arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
                 message_body = str(template).format(
                     guardian_name=guardian.display_name,
@@ -320,7 +334,8 @@ async def process_record_notifications(
                     )
                     event = (await session.execute(event_stmt)).scalar_one_or_none()
                     if event:
-                        arrival_time = event.occurred_at.astimezone(UTC).strftime("%H:%M:%S")
+                        from zoneinfo import ZoneInfo
+                        arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
                 message_body = str(template).format(
                     guardian_name=guardian.display_name,
