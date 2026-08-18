@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
+
 import pytest
 import time_machine
-from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
-from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
-from unittest.mock import MagicMock
-from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.attendance.decision_table import AttendanceStatus
+from backend.app.attendance.resolver import rebuild_all_attendance, resolve
 from backend.app.models.attendance import (
     AttendanceEvent,
     AttendanceEventDirection,
@@ -25,9 +26,7 @@ from backend.app.models.scheduling import (
     CalendarDayKind,
     PersonException,
     PersonExceptionKind,
-    Shift,
 )
-from backend.app.attendance.resolver import resolve, rebuild_all_attendance
 from backend.app.settings.resolver import ResolvedSettings, SettingContext
 
 # Constants
