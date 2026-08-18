@@ -537,3 +537,13 @@ paths = [
   "backend/tests/attendance/**",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "phase-10-retention-purge"
+paths = [
+  "backend/app/retention/**",
+  "backend/app/cli/purge.py",
+  "backend/tests/test_retention_purge.py",
+  "docs/ownership.toml",
+]
+
