@@ -1,0 +1,1 @@
+Correction: {{ person_name }} has arrived at {{ time }} for shift {{ shift_name }} on {{ date }}. Unsubscribe: {{ unsubscribe_url }}

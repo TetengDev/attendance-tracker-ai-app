@@ -18,6 +18,7 @@ from backend.app.api.enrollment import router as enrollment_router
 from backend.app.api.groups import router as groups_router
 from backend.app.api.health import router as health_router
 from backend.app.api.locations import router as locations_router
+from backend.app.api.notifications import router as notifications_router
 from backend.app.api.overrides import router as overrides_router
 from backend.app.api.people import router as people_router
 from backend.app.api.people_merge import router as people_merge_router
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(reports_router)
     app.include_router(overrides_router)
+    app.include_router(notifications_router)
     return app
 
 

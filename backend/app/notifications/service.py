@@ -148,11 +148,7 @@ async def process_record_notifications(
             # Check matching rule or fallback to defaults
             rule = await get_matching_rule(session, person, "absent")
             delay = rule.delay_minutes if rule else delay_mins
-            template = (
-                rule.template
-                if rule
-                else "Hello {guardian_name}, {person_name} was marked absent for shift {shift_name} on {date}."
-            )
+            template_str = rule.template if rule else get_fallback_template("absent")
 
             # Calculate scheduled send time
             base_time = expected.expected_start_at if expected else datetime.now(UTC)
@@ -166,12 +162,19 @@ async def process_record_notifications(
             if (await session.execute(exists_stmt)).scalar_one_or_none():
                 continue
 
+            unsubscribe_token = generate_unsubscribe_token(guardian.id)
+            unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+
             # Render message
-            message_body = str(template).format(
-                guardian_name=guardian.display_name,
-                person_name=person.display_name,
-                shift_name=shift_name,
-                date=record.business_date.isoformat(),
+            message_body = render_template(
+                str(template_str),
+                {
+                    "guardian_name": guardian.display_name,
+                    "person_name": person.display_name,
+                    "shift_name": shift_name,
+                    "date": record.business_date.isoformat(),
+                    "unsubscribe_url": unsubscribe_url,
+                },
             )
 
             # Insert pending notification
@@ -247,11 +250,7 @@ async def process_record_notifications(
                     continue
 
                 rule = await get_matching_rule(session, person, "retraction")
-                template = (
-                    rule.template
-                    if rule
-                    else "Correction: {person_name} has arrived at {time} for shift {shift_name} on {date}."
-                )
+                template_str = rule.template if rule else get_fallback_template("retraction")
 
                 # Get actual arrival time from events
                 arrival_time = "—"
@@ -267,12 +266,20 @@ async def process_record_notifications(
                         from zoneinfo import ZoneInfo
                         arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
-                message_body = str(template).format(
-                    guardian_name=guardian.display_name,
-                    person_name=person.display_name,
-                    shift_name=shift_name,
-                    date=record.business_date.isoformat(),
-                    time=arrival_time,
+                unsubscribe_token = generate_unsubscribe_token(guardian_id)
+                unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+
+                # Render message
+                message_body = render_template(
+                    str(template_str),
+                    {
+                        "guardian_name": guardian.display_name,
+                        "person_name": person.display_name,
+                        "shift_name": shift_name,
+                        "date": record.business_date.isoformat(),
+                        "time": arrival_time,
+                        "unsubscribe_url": unsubscribe_url,
+                    },
                 )
 
                 retraction = Notification(
@@ -317,11 +324,7 @@ async def process_record_notifications(
 
                 rule = await get_matching_rule(session, person, "late")
                 delay = rule.delay_minutes if rule else 0
-                template = (
-                    rule.template
-                    if rule
-                    else "Hello {guardian_name}, {person_name} arrived late for shift {shift_name} on {date} at {time}."
-                )
+                template_str = rule.template if rule else get_fallback_template("late")
 
                 # Get actual arrival time from events
                 arrival_time = "—"
@@ -337,12 +340,20 @@ async def process_record_notifications(
                         from zoneinfo import ZoneInfo
                         arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
-                message_body = str(template).format(
-                    guardian_name=guardian.display_name,
-                    person_name=person.display_name,
-                    shift_name=shift_name,
-                    date=record.business_date.isoformat(),
-                    time=arrival_time,
+                unsubscribe_token = generate_unsubscribe_token(guardian.id)
+                unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+
+                # Render message
+                message_body = render_template(
+                    str(template_str),
+                    {
+                        "guardian_name": guardian.display_name,
+                        "person_name": person.display_name,
+                        "shift_name": shift_name,
+                        "date": record.business_date.isoformat(),
+                        "time": arrival_time,
+                        "unsubscribe_url": unsubscribe_url,
+                    },
                 )
 
                 scheduled_at = datetime.now(UTC) + timedelta(minutes=delay)
@@ -486,3 +497,31 @@ async def dispatch_pending_notifications(
         await session.commit()
 
     return count
+
+
+def render_template(template_str: str, context: dict[str, Any]) -> str:
+    from jinja2 import Template
+    t = Template(template_str)
+    return str(t.render(**context))
+
+
+def get_fallback_template(trigger_status: str) -> str:
+    import os
+    filename = "absence.txt" if trigger_status == "absent" else f"{trigger_status}.txt"
+    dir_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(dir_path, "templates", filename)
+    with open(file_path, "r", encoding="utf-8") as f:
+        return str(f.read())
+
+
+def generate_unsubscribe_token(guardian_id: UUID) -> str:
+    import jwt
+
+    from backend.app.config import get_settings
+    settings = get_settings()
+    payload = {
+        "sub": str(guardian_id),
+        "purpose": "unsubscribe",
+        "exp": datetime.now(UTC) + timedelta(days=90),
+    }
+    return jwt.encode(payload, settings.jwt_secret.get_secret_value(), algorithm="HS256")

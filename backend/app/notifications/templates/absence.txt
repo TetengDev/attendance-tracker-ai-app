@@ -1,0 +1,1 @@
+Hello {{ guardian_name }}, {{ person_name }} was marked absent for shift {{ shift_name }} on {{ date }}. Unsubscribe: {{ unsubscribe_url }}
