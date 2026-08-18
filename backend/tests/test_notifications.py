@@ -350,13 +350,20 @@ async def test_process_record_notifications_queues_retraction_for_sent() -> None
     )
     await process_record_notifications(session, record, old_status=AttendanceStatus.ABSENT)
 
-    # Asserts that a retraction alert has been queued
-    assert len(session.added) == 1
-    retraction: Notification = session.added[0]
-    assert retraction.type == "retraction"
+    # Asserts that a retraction and late alert have been queued
+    assert len(session.added) == 2
+    types = {n.type for n in session.added}
+    assert types == {"retraction", "late"}
+    
+    retraction = next(n for n in session.added if n.type == "retraction")
     assert retraction.status == NotificationStatus.PENDING
     assert "Correction" in retraction.message_body
-    assert "08:25:00" in retraction.message_body  # Contains arrival time
+    assert "16:25:00" in retraction.message_body  # Contains arrival time
+
+    late_alert = next(n for n in session.added if n.type == "late")
+    assert late_alert.status == NotificationStatus.PENDING
+    assert "arrived late" in late_alert.message_body
+    assert "16:25:00" in late_alert.message_body
 
 
 @pytest.mark.anyio
@@ -537,3 +544,70 @@ async def test_pluggable_channels_registry() -> None:
     assert isinstance(email_chan, SmtpEmailChannel)
     assert email_chan.hostname == "localhost"
     assert email_chan.port == 1025
+
+
+@pytest.mark.anyio
+async def test_process_record_notifications_late_alert() -> None:
+    """Transitioning to LATE should trigger a tardiness alert."""
+    person, _guardian = setup_person_with_guardian()
+    
+    # 1. Setup expect and shift
+    expected = ExpectedAttendance(
+        id=uuid4(),
+        person_id=PERSON_ID,
+        business_date=date(2026, 8, 14),
+        shift_id=SHIFT_ID,
+        expected_start_at=datetime(2026, 8, 14, 8, 0, tzinfo=UTC),
+        expected_end_at=datetime(2026, 8, 14, 17, 0, tzinfo=UTC),
+    )
+    shift = Shift(
+        id=SHIFT_ID,
+        name="Day Shift",
+        starts_at=datetime(2026, 8, 14, 8, 0, tzinfo=UTC).time(),
+        ends_at=datetime(2026, 8, 14, 17, 0, tzinfo=UTC).time(),
+    )
+    
+    # 2. Setup checking-in arrival event
+    event = AttendanceEvent(
+        id=1234,
+        person_id=PERSON_ID,
+        device_id=uuid4(),
+        occurred_at=datetime(2026, 8, 14, 8, 15, tzinfo=UTC),
+        outcome="accepted",
+        direction="in",
+        idempotency_key="late-event-key",
+        client_captured_at=datetime(2026, 8, 14, 8, 15, tzinfo=UTC),
+        server_received_at=datetime(2026, 8, 14, 8, 15, tzinfo=UTC),
+    )
+    
+    # 3. Setup late record
+    record = AttendanceRecord(
+        person_id=PERSON_ID,
+        business_date=date(2026, 8, 14),
+        shift_id=SHIFT_ID,
+        period_label="",
+        status=AttendanceStatus.LATE,
+        expected_attendance_id=expected.id,
+        first_event_id=event.id,
+    )
+    
+    session = NotificationMockSession(
+        person=person,
+        expected=expected,
+        shift=shift,
+        event=event,
+    )
+    await process_record_notifications(session, record, old_status=None)
+
+    # Asserts that 1 late notification has been queued
+    assert len(session.added) == 1
+    notif: Notification = session.added[0]
+    assert notif.person_id == PERSON_ID
+    assert notif.guardian_id == GUARDIAN_ID
+    assert notif.type == "late"
+    assert notif.status == NotificationStatus.PENDING
+    assert notif.recipient == "+639000000000"
+    assert notif.channel == ContactChannel.SMS
+    assert "arrived late" in notif.message_body
+    assert "16:15:00" in notif.message_body
+

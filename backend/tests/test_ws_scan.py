@@ -124,6 +124,9 @@ class MockSession:
                 return self.person_a
             if identifier == PERSON_B_ID:
                 return self.person_b
+        from backend.app.models.devices import Location
+        if model is Location:
+            return Location(id=LOCATION_ID, name="Test Campus", timezone="Asia/Manila")
         return None
 
     async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> Any:
@@ -161,6 +164,8 @@ class MockSession:
             return MockResult(self.existing_event)
         if "FROM people" in sql:
             return MockResult(self.person_a if self.should_find_person else None)
+        if "FROM admin_users" in sql:
+            return MockResult(["admin@example.com"])
 
         return MockResult(None)
 
@@ -496,7 +501,20 @@ class TestWebSocketFrameBurst:
         mock_session: MockSession,
         test_engine: FakeFaceEngine,
         test_gallery: GalleryIndex,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # Register mock email channel using monkeypatch to avoid state leak
+
+        class MockEmailChannel:
+            def __init__(self) -> None:
+                self.sent_emails: list[tuple[str, str, str | None]] = []
+
+            async def send(self, recipient: str, message: str, subject: str | None = None) -> None:
+                self.sent_emails.append((recipient, message, subject))
+
+        mock_email_chan = MockEmailChannel()
+        monkeypatch.setattr("backend.app.notifications.channels.registry._email_channel", mock_email_chan)
+
         # Spoof frame
         test_engine.next_result(person="alice", score=0.9, liveness=0.1, n_faces=1)
 
@@ -538,6 +556,21 @@ class TestWebSocketFrameBurst:
             err = ws.receive_json()
             assert err["type"] == "error"
             assert err["error"]["code"] == ErrorCode.LIVENESS_FAILED.value
+
+        # Poll until the background task dispatches the email
+        import time
+        start_time = time.time()
+        while len(mock_email_chan.sent_emails) == 0 and time.time() - start_time < 2.0:
+            time.sleep(0.01)
+
+        # Assert that email alert was sent
+        assert len(mock_email_chan.sent_emails) == 1
+        recipient, body, subject = mock_email_chan.sent_emails[0]
+        assert recipient == "admin@example.com"
+        assert subject is not None
+        assert "Spoofing Attempt" in subject
+        assert "Test Campus" in body
+        assert "tst_dev" in body
 
     def test_frame_burst_idempotency_cache(
         self, client: TestClient, mock_session: MockSession

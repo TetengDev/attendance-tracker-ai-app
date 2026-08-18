@@ -82,11 +82,17 @@ async def process_record_notifications(
 
     Queues new notifications or retracts/cancels existing pending notifications.
     """
+    if old_status is not None and record.status == old_status:
+        return
+
     # Only students get guardian alerts generally
     person_stmt = (
         select(Person)
         .where(Person.id == record.person_id)
-        .options(selectinload(Person.guardians).selectinload(PersonGuardian.guardian))
+        .options(
+            selectinload(Person.guardians).selectinload(PersonGuardian.guardian),
+            selectinload(Person.group_memberships),
+        )
     )
     person = (await session.execute(person_stmt)).scalar_one_or_none()
     if not person or not person.is_active or not person.guardians:
@@ -94,11 +100,19 @@ async def process_record_notifications(
 
     # Load expected attendance to calculate schedule start time / settings context
     expected = None
+    location_tz = "Asia/Manila"
     if record.expected_attendance_id:
         expected_stmt = select(ExpectedAttendance).where(
             ExpectedAttendance.id == record.expected_attendance_id
         )
         expected = (await session.execute(expected_stmt)).scalar_one_or_none()
+        if expected and expected.location_id:
+            from backend.app.models.devices import Location
+
+            loc_stmt = select(Location).where(Location.id == expected.location_id)
+            loc = (await session.execute(loc_stmt)).scalar_one_or_none()
+            if loc and loc.timezone:
+                location_tz = loc.timezone
 
     # Load shift info for template naming
     shift_name = "Regular"
@@ -250,8 +264,8 @@ async def process_record_notifications(
                     )
                     event = (await session.execute(event_stmt)).scalar_one_or_none()
                     if event:
-                        # Format as local Manila time or local time format
-                        arrival_time = event.occurred_at.astimezone(UTC).strftime("%H:%M:%S")
+                        from zoneinfo import ZoneInfo
+                        arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
                 message_body = str(template).format(
                     guardian_name=guardian.display_name,
@@ -276,6 +290,78 @@ async def process_record_notifications(
                     scheduled_at=datetime.now(UTC),
                 )
                 session.add(retraction)
+
+        # 3. Handle Late/Tardiness alerts
+        if record.status == AttendanceStatus.LATE:
+            for pg in person.guardians:
+                if not pg.receives_attendance_alerts or not pg.guardian:
+                    continue
+
+                guardian = pg.guardian
+                if guardian.preferred_channel == ContactChannel.NONE:
+                    continue
+
+                recipient = (
+                    guardian.phone
+                    if guardian.preferred_channel == ContactChannel.SMS
+                    else guardian.email
+                )
+                if not recipient:
+                    continue
+
+                dedupe_key = f"late:{record.person_id}:{record.business_date}:{record.shift_id}:{record.period_label}:{guardian.id}"
+
+                exists_stmt = select(Notification.id).where(Notification.dedupe_key == dedupe_key)
+                if (await session.execute(exists_stmt)).scalar_one_or_none():
+                    continue
+
+                rule = await get_matching_rule(session, person, "late")
+                delay = rule.delay_minutes if rule else 0
+                template = (
+                    rule.template
+                    if rule
+                    else "Hello {guardian_name}, {person_name} arrived late for shift {shift_name} on {date} at {time}."
+                )
+
+                # Get actual arrival time from events
+                arrival_time = "—"
+                if record.first_event_id:
+                    # Lazy import to avoid circular references
+                    from backend.app.models.attendance import AttendanceEvent
+
+                    event_stmt = select(AttendanceEvent).where(
+                        AttendanceEvent.id == record.first_event_id
+                    )
+                    event = (await session.execute(event_stmt)).scalar_one_or_none()
+                    if event:
+                        from zoneinfo import ZoneInfo
+                        arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
+
+                message_body = str(template).format(
+                    guardian_name=guardian.display_name,
+                    person_name=person.display_name,
+                    shift_name=shift_name,
+                    date=record.business_date.isoformat(),
+                    time=arrival_time,
+                )
+
+                scheduled_at = datetime.now(UTC) + timedelta(minutes=delay)
+
+                late_notif = Notification(
+                    person_id=record.person_id,
+                    business_date=record.business_date,
+                    shift_id=record.shift_id,
+                    period_label=record.period_label,
+                    guardian_id=guardian.id,
+                    type="late",
+                    status=NotificationStatus.PENDING,
+                    channel=guardian.preferred_channel,
+                    recipient=recipient,
+                    message_body=message_body,
+                    dedupe_key=dedupe_key,
+                    scheduled_at=scheduled_at,
+                )
+                session.add(late_notif)
 
 
 async def get_matching_rule(

@@ -769,6 +769,52 @@ async def kiosk_websocket_endpoint(
                     if liveness_fails:
                         final_error = liveness_fails[0]
 
+                        # Pre-fetch active admin emails and location name to avoid concurrent AsyncSession usage
+                        from backend.app.models.admin import AdminRole, AdminUser
+
+                        # Fetch active owners and admin emails
+                        admin_stmt = select(AdminUser.email).where(
+                            AdminUser.is_active.is_(True),
+                            AdminUser.role.in_([AdminRole.OWNER, AdminRole.ADMIN]),
+                        )
+                        admin_emails = (await session.execute(admin_stmt)).scalars().all()
+
+                        location_name = "Unknown Location"
+                        loc_id = attribution.location_id or device.location_id
+                        if loc_id:
+                            from backend.app.models.devices import Location
+                            loc = await session.get(Location, loc_id)
+                            if loc:
+                                location_name = loc.name
+
+                        alert_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                        alert_body = (
+                            f"A biometric liveness check failed (possible spoofing attempt) at {alert_time} UTC.\n"
+                            f"Device: {device.token_display_prefix or 'Unknown'} (ID: {device.id})\n"
+                            f"Location: {location_name}\n"
+                            f"Details: {final_error.details}\n"
+                        )
+
+                        import asyncio
+                        async def _send_alerts(emails: list[str], body: str) -> None:
+                            try:
+                                from backend.app.notifications.channels import get_email_channel
+                                email_chan = get_email_channel()
+                                for email in emails:
+                                    if email:
+                                        try:
+                                            await email_chan.send(
+                                                email,
+                                                body,
+                                                subject="[Security Alert] Biometric Spoofing Attempt Detected",
+                                            )
+                                        except Exception:
+                                            logger.exception("Failed to send spoofing alert email to %s", email)
+                            except Exception:
+                                logger.exception("Failed to trigger admin spoof alerts")
+
+                        asyncio.create_task(_send_alerts(list(admin_emails), alert_body))
+
                     # Rule 2: If all frames had no face, return NO_FACE
                     elif len(errors) == len(burst.frames) and all(
                         err.code == ErrorCode.NO_FACE for err in errors
