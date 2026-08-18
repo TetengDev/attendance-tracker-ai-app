@@ -989,9 +989,9 @@ async def test_resolve_idempotence() -> None:
     )
     await resolve(session2, PERSON_ID, date(2026, 8, 14), as_of=as_of)
     records2 = [r for r in session2.added if isinstance(r, AttendanceRecord)]
-    if records2:
-        assert records2[0].status == records1[0].status
-        assert records2[0].late_minutes == records1[0].late_minutes
+    assert len(records2) == 1
+    assert records2[0].status == records1[0].status
+    assert records2[0].late_minutes == records1[0].late_minutes
 
 
 @pytest.mark.anyio
@@ -1023,106 +1023,94 @@ async def _mock_settings_autoclose(db: Any, context: SettingContext) -> Resolved
 
 
 @pytest.mark.anyio
-async def test_std_incomplete() -> None:
+async def test_std_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     """Standard shift: arrived, no departure, auto_close past window → INCOMPLETE."""
     import backend.app.attendance.resolver as resolver_mod
 
-    original = resolver_mod.resolve_db_settings
-    resolver_mod.resolve_db_settings = _mock_settings_autoclose
-    try:
-        expected = make_expected(
-            start_utc=datetime(2026, 8, 14, 0, 0, tzinfo=UTC),
-            end_utc=datetime(2026, 8, 14, 9, 0, tzinfo=UTC),
-        )
-        event = make_event(datetime(2026, 8, 13, 23, 55, tzinfo=UTC))
-        late_as_of = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", _mock_settings_autoclose)
 
-        session = MockSession(expected_rows=[expected], events=[event])
-        await resolve(session, PERSON_ID, date(2026, 8, 14), as_of=late_as_of)
+    expected = make_expected(
+        start_utc=datetime(2026, 8, 14, 0, 0, tzinfo=UTC),
+        end_utc=datetime(2026, 8, 14, 9, 0, tzinfo=UTC),
+    )
+    event = make_event(datetime(2026, 8, 13, 23, 55, tzinfo=UTC))
+    late_as_of = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
 
-        records = [r for r in session.added if isinstance(r, AttendanceRecord)]
-        assert len(records) == 1
-        assert records[0].status == AttendanceStatus.INCOMPLETE
-        assert records[0].flags["auto_closed"] is True
-    finally:
-        resolver_mod.resolve_db_settings = original
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, date(2026, 8, 14), as_of=late_as_of)
+
+    records = [r for r in session.added if isinstance(r, AttendanceRecord)]
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.INCOMPLETE
+    assert records[0].flags["auto_closed"] is True
 
 
 @pytest.mark.anyio
-async def test_overnight_incomplete() -> None:
+async def test_overnight_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     """Overnight shift: arrived, no departure, auto_close past window → INCOMPLETE."""
     import backend.app.attendance.resolver as resolver_mod
 
-    original = resolver_mod.resolve_db_settings
-    resolver_mod.resolve_db_settings = _mock_settings_autoclose
-    try:
-        expected = make_expected(
-            start_utc=datetime(2026, 8, 14, 14, 0, tzinfo=UTC),
-            end_utc=datetime(2026, 8, 14, 22, 0, tzinfo=UTC),
-        )
-        event = make_event(datetime(2026, 8, 14, 13, 55, tzinfo=UTC))
-        late_as_of = datetime(2026, 8, 15, 1, 0, tzinfo=UTC)
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", _mock_settings_autoclose)
 
-        session = MockSession(expected_rows=[expected], events=[event])
-        await resolve(session, PERSON_ID, date(2026, 8, 14), as_of=late_as_of)
+    expected = make_expected(
+        start_utc=datetime(2026, 8, 14, 14, 0, tzinfo=UTC),
+        end_utc=datetime(2026, 8, 14, 22, 0, tzinfo=UTC),
+    )
+    event = make_event(datetime(2026, 8, 14, 13, 55, tzinfo=UTC))
+    late_as_of = datetime(2026, 8, 15, 1, 0, tzinfo=UTC)
 
-        records = [r for r in session.added if isinstance(r, AttendanceRecord)]
-        assert len(records) == 1
-        assert records[0].status == AttendanceStatus.INCOMPLETE
-        assert records[0].flags["auto_closed"] is True
-    finally:
-        resolver_mod.resolve_db_settings = original
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, date(2026, 8, 14), as_of=late_as_of)
+
+    records = [r for r in session.added if isinstance(r, AttendanceRecord)]
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.INCOMPLETE
+    assert records[0].flags["auto_closed"] is True
 
 
 @pytest.mark.anyio
-async def test_spring_dst_incomplete() -> None:
+async def test_spring_dst_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     """Spring DST shift: arrived, no departure, auto_close past window → INCOMPLETE."""
     import backend.app.attendance.resolver as resolver_mod
 
-    original = resolver_mod.resolve_db_settings
-    resolver_mod.resolve_db_settings = _mock_settings_autoclose
-    try:
-        expected = make_expected(
-            start_utc=datetime(2026, 3, 8, 6, 0, tzinfo=UTC),
-            end_utc=datetime(2026, 3, 8, 13, 0, tzinfo=UTC),
-            business_date=date(2026, 3, 8),
-        )
-        event = make_event(datetime(2026, 3, 8, 5, 55, tzinfo=UTC))
-        late_as_of = datetime(2026, 3, 8, 15, 30, tzinfo=UTC)
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", _mock_settings_autoclose)
 
-        session = MockSession(expected_rows=[expected], events=[event])
-        await resolve(session, PERSON_ID, date(2026, 3, 8), as_of=late_as_of)
+    expected = make_expected(
+        start_utc=datetime(2026, 3, 8, 6, 0, tzinfo=UTC),
+        end_utc=datetime(2026, 3, 8, 13, 0, tzinfo=UTC),
+        business_date=date(2026, 3, 8),
+    )
+    event = make_event(datetime(2026, 3, 8, 5, 55, tzinfo=UTC))
+    late_as_of = datetime(2026, 3, 8, 15, 30, tzinfo=UTC)
 
-        records = [r for r in session.added if isinstance(r, AttendanceRecord)]
-        assert len(records) == 1
-        assert records[0].status == AttendanceStatus.INCOMPLETE
-        assert records[0].flags["auto_closed"] is True
-    finally:
-        resolver_mod.resolve_db_settings = original
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, date(2026, 3, 8), as_of=late_as_of)
+
+    records = [r for r in session.added if isinstance(r, AttendanceRecord)]
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.INCOMPLETE
+    assert records[0].flags["auto_closed"] is True
 
 
 @pytest.mark.anyio
-async def test_fall_dst_incomplete() -> None:
+async def test_fall_dst_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fall DST shift: arrived, no departure, auto_close past window → INCOMPLETE."""
     import backend.app.attendance.resolver as resolver_mod
 
-    original = resolver_mod.resolve_db_settings
-    resolver_mod.resolve_db_settings = _mock_settings_autoclose
-    try:
-        expected = make_expected(
-            start_utc=datetime(2026, 11, 1, 5, 0, tzinfo=UTC),
-            end_utc=datetime(2026, 11, 1, 14, 0, tzinfo=UTC),
-            business_date=date(2026, 11, 1),
-        )
-        event = make_event(datetime(2026, 11, 1, 4, 55, tzinfo=UTC))
-        late_as_of = datetime(2026, 11, 1, 16, 30, tzinfo=UTC)
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", _mock_settings_autoclose)
 
-        session = MockSession(expected_rows=[expected], events=[event])
-        await resolve(session, PERSON_ID, date(2026, 11, 1), as_of=late_as_of)
+    expected = make_expected(
+        start_utc=datetime(2026, 11, 1, 5, 0, tzinfo=UTC),
+        end_utc=datetime(2026, 11, 1, 14, 0, tzinfo=UTC),
+        business_date=date(2026, 11, 1),
+    )
+    event = make_event(datetime(2026, 11, 1, 4, 55, tzinfo=UTC))
+    late_as_of = datetime(2026, 11, 1, 16, 30, tzinfo=UTC)
 
-        records = [r for r in session.added if isinstance(r, AttendanceRecord)]
-        assert len(records) == 1
-        assert records[0].status == AttendanceStatus.INCOMPLETE
-        assert records[0].flags["auto_closed"] is True
-    finally:
-        resolver_mod.resolve_db_settings = original
+    session = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session, PERSON_ID, date(2026, 11, 1), as_of=late_as_of)
+
+    records = [r for r in session.added if isinstance(r, AttendanceRecord)]
+    assert len(records) == 1
+    assert records[0].status == AttendanceStatus.INCOMPLETE
+    assert records[0].flags["auto_closed"] is True
