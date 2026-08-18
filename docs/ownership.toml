@@ -544,6 +544,7 @@ paths = [
   "backend/app/retention/**",
   "backend/app/cli/purge.py",
   "backend/tests/test_retention_purge.py",
+  "backend/alembic/versions/8fa6501f8b67_add_deactivated_at_to_people.py",
   "docs/ownership.toml",
 ]
 

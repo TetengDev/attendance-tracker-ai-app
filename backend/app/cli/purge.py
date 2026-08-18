@@ -4,7 +4,7 @@ import asyncio
 import logging
 import sys
 
-from backend.app.db.session import get_session_factory
+from backend.app.db.session import dispose_engine, get_session_factory
 from backend.app.retention.service import run_purge_job
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,8 @@ async def main() -> None:
     except Exception:
         logger.exception("Retention purge job failed")
         sys.exit(1)
+    finally:
+        await dispose_engine()
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ class PurgeMockSession:
     async def execute(self, statement: Any, *args: Any, **kwargs: Any) -> MockResult:
         self.executed_statements.append(statement)
         sql = str(statement)
-        
+
         rowcount = 0
         if "DELETE" in sql:
             if "device_heartbeats" in sql:
@@ -62,8 +62,17 @@ class PurgeMockSession:
                 rowcount = 50
             elif "attendance_records" in sql:
                 rowcount = 60
+            elif "expected_attendance" in sql:
+                rowcount = 65
+            elif "attendance_overrides" in sql:
+                rowcount = 68
             elif "audit_log" in sql:
                 rowcount = 70
+            elif "report_jobs" in sql:
+                rowcount = 80
+        elif "SELECT" in sql and "report_jobs" in sql:
+            # Mock select of expired report job file paths
+            return MockResult([("dummy_file_path_1.pdf",), (None,)])
 
         return MockResult([], rowcount=rowcount)
 
@@ -97,6 +106,20 @@ async def test_run_purge_job(monkeypatch: pytest.MonkeyPatch) -> None:
         return b"a" * 32
     monkeypatch.setattr(audit_service, "latest_audit_hash", mock_latest_hash)
 
+    # Mock Path.exists and Path.unlink to verify file purging logic
+    file_unlinked = False
+
+    def mock_exists(self: Any) -> bool:
+        return True
+
+    def mock_unlink(self: Any) -> None:
+        nonlocal file_unlinked
+        file_unlinked = True
+
+    from pathlib import Path
+    monkeypatch.setattr(Path, "exists", mock_exists)
+    monkeypatch.setattr(Path, "unlink", mock_unlink)
+
     now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=UTC)
     session = PurgeMockSession()
 
@@ -109,7 +132,11 @@ async def test_run_purge_job(monkeypatch: pytest.MonkeyPatch) -> None:
     assert stats["enrollment_assets"] == 50
     assert stats["attendance_events"] == 30
     assert stats["attendance_records"] == 60
+    assert stats["expected_attendance"] == 65
+    assert stats["attendance_overrides"] == 68
     assert stats["audit_logs"] == 70
+    assert stats["expired_report_jobs"] == 80
+    assert file_unlinked
 
     # Assert that an AuditLog was added
     assert len(session.added) == 1
@@ -125,6 +152,17 @@ async def test_run_purge_job(monkeypatch: pytest.MonkeyPatch) -> None:
     after_dict = cast(dict[str, Any], audit_row.after)
     assert before_dict["thresholds"]["embeddings_days"] == 100
     assert after_dict["deleted_counts"]["device_heartbeats"] == 10
+
+    # Ensure SQL compiles correct tables and operators
+    # Let's inspect executed statements to confirm WHERE conditions
+    sql_stmts = [str(stmt) for stmt in session.executed_statements]
+    
+    # Confirm heartbeats delete filters on observed_at
+    assert any("observed_at <" in s for s in sql_stmts if "device_heartbeats" in s)
+    # Confirm unknown face events delete filters on occurred_at and outcome
+    assert any("occurred_at <" in s and "outcome" in s for s in sql_stmts if "attendance_events" in s)
+    # Confirm face embeddings filters using deactivated_at in subquery
+    assert any("deactivated_at <" in s for s in sql_stmts if "people" in s)
 
 
 @pytest.mark.anyio
@@ -155,11 +193,58 @@ async def test_cli_purge_main(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_session = MagicMock()
     mock_session.begin = MagicMock(return_value=AsyncContextManager())
 
-    # calling factory() returns AsyncContextManager(mock_session)
     mock_factory = MagicMock(return_value=AsyncContextManager(mock_session))
-    # calling get_session_factory() returns factory
     monkeypatch.setattr(cli_mod, "get_session_factory", MagicMock(return_value=mock_factory))
+
+    # Mock dispose_engine
+    disposed = False
+    async def mock_dispose() -> None:
+        nonlocal disposed
+        disposed = True
+    monkeypatch.setattr(cli_mod, "dispose_engine", mock_dispose)
 
     await cli_mod.main()
     assert called
+    assert disposed
 
+
+@pytest.mark.anyio
+async def test_cli_purge_main_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Verify exception propagation triggers sys.exit(1)
+    async def mock_run_purge_job_fail(session: Any, *, now: Any = None) -> dict[str, int]:
+        raise RuntimeError("DB Connection Lost")
+
+    import backend.app.cli.purge as cli_mod
+    monkeypatch.setattr(cli_mod, "run_purge_job", mock_run_purge_job_fail)
+
+    class AsyncContextManager:
+        def __init__(self, value: Any = None) -> None:
+            self._value = value
+        async def __aenter__(self) -> Any:
+            return self._value
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_val: BaseException | None,
+            exc_tb: object,
+        ) -> None:
+            pass
+
+    mock_session = MagicMock()
+    mock_session.begin = MagicMock(return_value=AsyncContextManager())
+
+    mock_factory = MagicMock(return_value=AsyncContextManager(mock_session))
+    monkeypatch.setattr(cli_mod, "get_session_factory", MagicMock(return_value=mock_factory))
+
+    # Mock dispose_engine
+    disposed = False
+    async def mock_dispose() -> None:
+        nonlocal disposed
+        disposed = True
+    monkeypatch.setattr(cli_mod, "dispose_engine", mock_dispose)
+
+    with pytest.raises(SystemExit) as exc_info:
+        await cli_mod.main()
+
+    assert exc_info.value.code == 1
+    assert disposed
