@@ -166,16 +166,30 @@ async def process_record_notifications(
             unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
 
             # Render message
-            message_body = render_template(
-                str(template_str),
-                {
-                    "guardian_name": guardian.display_name,
-                    "person_name": person.display_name,
-                    "shift_name": shift_name,
-                    "date": record.business_date.isoformat(),
-                    "unsubscribe_url": unsubscribe_url,
-                },
-            )
+            try:
+                message_body = render_template(
+                    str(template_str),
+                    {
+                        "guardian_name": guardian.display_name,
+                        "person_name": person.display_name,
+                        "shift_name": shift_name,
+                        "date": record.business_date.isoformat(),
+                        "unsubscribe_url": unsubscribe_url,
+                    },
+                )
+            except Exception:
+                logger.exception("Failed to render custom template, falling back to default")
+                fallback_str = get_fallback_template("absent")
+                message_body = render_template(
+                    str(fallback_str),
+                    {
+                        "guardian_name": guardian.display_name,
+                        "person_name": person.display_name,
+                        "shift_name": shift_name,
+                        "date": record.business_date.isoformat(),
+                        "unsubscribe_url": unsubscribe_url,
+                    },
+                )
 
             # Insert pending notification
             notif = Notification(
@@ -270,17 +284,32 @@ async def process_record_notifications(
                 unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
 
                 # Render message
-                message_body = render_template(
-                    str(template_str),
-                    {
-                        "guardian_name": guardian.display_name,
-                        "person_name": person.display_name,
-                        "shift_name": shift_name,
-                        "date": record.business_date.isoformat(),
-                        "time": arrival_time,
-                        "unsubscribe_url": unsubscribe_url,
-                    },
-                )
+                try:
+                    message_body = render_template(
+                        str(template_str),
+                        {
+                            "guardian_name": guardian.display_name,
+                            "person_name": person.display_name,
+                            "shift_name": shift_name,
+                            "date": record.business_date.isoformat(),
+                            "time": arrival_time,
+                            "unsubscribe_url": unsubscribe_url,
+                        },
+                    )
+                except Exception:
+                    logger.exception("Failed to render custom template, falling back to default")
+                    fallback_str = get_fallback_template("retraction")
+                    message_body = render_template(
+                        str(fallback_str),
+                        {
+                            "guardian_name": guardian.display_name,
+                            "person_name": person.display_name,
+                            "shift_name": shift_name,
+                            "date": record.business_date.isoformat(),
+                            "time": arrival_time,
+                            "unsubscribe_url": unsubscribe_url,
+                        },
+                    )
 
                 retraction = Notification(
                     person_id=record.person_id,
@@ -344,17 +373,32 @@ async def process_record_notifications(
                 unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
 
                 # Render message
-                message_body = render_template(
-                    str(template_str),
-                    {
-                        "guardian_name": guardian.display_name,
-                        "person_name": person.display_name,
-                        "shift_name": shift_name,
-                        "date": record.business_date.isoformat(),
-                        "time": arrival_time,
-                        "unsubscribe_url": unsubscribe_url,
-                    },
-                )
+                try:
+                    message_body = render_template(
+                        str(template_str),
+                        {
+                            "guardian_name": guardian.display_name,
+                            "person_name": person.display_name,
+                            "shift_name": shift_name,
+                            "date": record.business_date.isoformat(),
+                            "time": arrival_time,
+                            "unsubscribe_url": unsubscribe_url,
+                        },
+                    )
+                except Exception:
+                    logger.exception("Failed to render custom template, falling back to default")
+                    fallback_str = get_fallback_template("late")
+                    message_body = render_template(
+                        str(fallback_str),
+                        {
+                            "guardian_name": guardian.display_name,
+                            "person_name": person.display_name,
+                            "shift_name": shift_name,
+                            "date": record.business_date.isoformat(),
+                            "time": arrival_time,
+                            "unsubscribe_url": unsubscribe_url,
+                        },
+                    )
 
                 scheduled_at = datetime.now(UTC) + timedelta(minutes=delay)
 

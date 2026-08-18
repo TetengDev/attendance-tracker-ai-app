@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -12,11 +12,13 @@ from sqlalchemy import select
 from backend.app.api.common import (
     ActorDep,
     AdminUserDep,
+    CrudError,
     SessionDep,
     StrictSchema,
     audited_mutation,
     require_org_admin,
     snapshot,
+    translate_crud_error,
 )
 from backend.app.models.notifications import NotificationRule
 from backend.app.models.people import ContactChannel, Guardian, PersonGuardian
@@ -24,11 +26,14 @@ from backend.app.models.people import ContactChannel, Guardian, PersonGuardian
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
+TriggerStatusType = Literal["absent", "late", "retraction"]
+
+
 class NotificationRuleSchema(StrictSchema):
     id: UUID
     group_id: UUID | None
     person_kind: str | None
-    trigger_status: str
+    trigger_status: TriggerStatusType
     delay_minutes: int
     channel: ContactChannel
     template: str
@@ -38,7 +43,7 @@ class NotificationRuleSchema(StrictSchema):
 class NotificationRuleCreate(StrictSchema):
     group_id: UUID | None = None
     person_kind: str | None = None
-    trigger_status: str = Field(..., max_length=32)
+    trigger_status: TriggerStatusType
     delay_minutes: int = Field(default=0, ge=0)
     channel: ContactChannel = ContactChannel.SMS
     template: str
@@ -48,7 +53,7 @@ class NotificationRuleCreate(StrictSchema):
 class NotificationRuleUpdate(StrictSchema):
     group_id: UUID | None = None
     person_kind: str | None = None
-    trigger_status: str | None = None
+    trigger_status: TriggerStatusType | None = None
     delay_minutes: int | None = None
     channel: ContactChannel | None = None
     template: str | None = None
@@ -66,12 +71,29 @@ class GuardianPreferenceInfo(StrictSchema):
     receives_attendance_alerts: bool
 
 
+def validate_jinja2_template(template_str: str) -> None:
+    from jinja2 import Environment
+    from jinja2.exceptions import TemplateSyntaxError
+
+    try:
+        Environment().parse(template_str)
+    except TemplateSyntaxError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid template syntax: {exc}",
+        )
+
+
 @router.get("/rules", response_model=list[NotificationRuleSchema])
 async def list_rules(
     session: SessionDep,
     admin_user: AdminUserDep,
 ) -> list[NotificationRule]:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
     stmt = select(NotificationRule)
     rules = (await session.execute(stmt)).scalars().all()
     return list(rules)
@@ -83,7 +105,11 @@ async def get_rule(
     session: SessionDep,
     admin_user: AdminUserDep,
 ) -> NotificationRule:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
     rule = await session.get(NotificationRule, id)
     if not rule:
         raise HTTPException(status_code=404, detail="Notification rule not found")
@@ -97,7 +123,12 @@ async def create_rule(
     admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> NotificationRule:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
+    validate_jinja2_template(payload.template)
 
     from backend.app.api.common import RequestActor
     actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
@@ -147,7 +178,14 @@ async def update_rule(
     admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> NotificationRule:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
+    if payload.template is not None:
+        validate_jinja2_template(payload.template)
+
     rule = await session.get(NotificationRule, id)
     if not rule:
         raise HTTPException(status_code=404, detail="Notification rule not found")
@@ -214,7 +252,11 @@ async def delete_rule(
     admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> None:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
+
     rule = await session.get(NotificationRule, id)
     if not rule:
         raise HTTPException(status_code=404, detail="Notification rule not found")
@@ -253,7 +295,10 @@ async def get_preferences(
     session: SessionDep,
     admin_user: AdminUserDep,
 ) -> dict[str, Any]:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
     guardian = await session.get(Guardian, guardian_id)
     if not guardian:
         raise HTTPException(status_code=404, detail="Guardian not found")
@@ -277,7 +322,10 @@ async def update_preferences(
     admin_user: AdminUserDep,
     actor: ActorDep,
 ) -> dict[str, Any]:
-    require_org_admin(admin_user)
+    try:
+        require_org_admin(admin_user)
+    except CrudError as exc:
+        raise translate_crud_error(exc) from exc
     guardian = await session.get(Guardian, guardian_id)
     if not guardian:
         raise HTTPException(status_code=404, detail="Guardian not found")
@@ -333,14 +381,17 @@ async def unsubscribe(
             token,
             settings.jwt_secret.get_secret_value(),
             algorithms=["HS256"],
+            options={"require": ["exp"]},
         )
         if payload.get("purpose") != "unsubscribe":
             return HTMLResponse(
                 content="<html><body><h2>Invalid unsubscribe request.</h2></body></html>",
                 status_code=400,
             )
+        if "sub" not in payload:
+            raise KeyError("sub")
         guardian_id = UUID(payload["sub"])
-    except jwt.PyJWTError:
+    except (jwt.PyJWTError, ValueError, TypeError, KeyError):
         return HTMLResponse(
             content="<html><body><h2>Link is invalid or has expired.</h2></body></html>",
             status_code=400,
