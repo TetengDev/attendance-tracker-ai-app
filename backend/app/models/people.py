@@ -13,7 +13,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 from sqlalchemy.orm import relationship as orm_relationship
 from sqlalchemy.types import Uuid
 
@@ -74,8 +74,19 @@ class Person(Base):
     merged_at: Mapped[datetime | None] = mapped_column(nullable=True)
     locale: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    deactivated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+    @validates("is_active")
+    def validate_is_active(self, key: str, value: bool) -> bool:
+        if not value:
+            if getattr(self, "is_active", True) or getattr(self, "deactivated_at", None) is None:
+                from datetime import UTC, datetime
+                self.deactivated_at = datetime.now(UTC)
+        else:
+            self.deactivated_at = None
+        return value
 
     group_memberships: Mapped[list[PersonGroup]] = orm_relationship(
         back_populates="person",

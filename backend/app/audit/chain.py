@@ -68,7 +68,9 @@ def make_audit_log(entry: AuditEntry, *, prev_hash: bytes | None) -> AuditLog:
 
 
 def verify_audit_chain(rows: list[AuditLog]) -> bytes | None:
-    prev_hash: bytes | None = None
+    if not rows:
+        return None
+    prev_hash: bytes | None = rows[0].prev_hash
     for row in rows:
         if row.prev_hash != prev_hash:
             raise AuditChainError(f"audit row {row.id} has an unexpected previous hash")
