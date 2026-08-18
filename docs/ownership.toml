@@ -530,3 +530,10 @@ paths = [
   "infra/compose.yml",
   "docs/ownership.toml",
 ]
+
+[[ownership]]
+issue = "phase-5-timezone-dst"
+paths = [
+  "backend/tests/attendance/**",
+  "docs/ownership.toml",
+]

@@ -37,6 +37,7 @@ dev = [
   "ruff>=0.12",
   "mypy>=1.17",
   "httpx2>=2.9.1",
+  "time-machine>=3.4.0",
 ]
 
 [tool.pytest.ini_options]
