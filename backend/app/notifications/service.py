@@ -163,7 +163,7 @@ async def process_record_notifications(
                 continue
 
             unsubscribe_token = generate_unsubscribe_token(guardian.id)
-            unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+            unsubscribe_url = f"{_get_public_base_url()}/api/notifications/unsubscribe?token={unsubscribe_token}"
 
             # Render message
             try:
@@ -281,7 +281,7 @@ async def process_record_notifications(
                         arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
                 unsubscribe_token = generate_unsubscribe_token(guardian_id)
-                unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+                unsubscribe_url = f"{_get_public_base_url()}/api/notifications/unsubscribe?token={unsubscribe_token}"
 
                 # Render message
                 try:
@@ -370,7 +370,7 @@ async def process_record_notifications(
                         arrival_time = event.occurred_at.astimezone(ZoneInfo(location_tz)).strftime("%H:%M:%S")
 
                 unsubscribe_token = generate_unsubscribe_token(guardian.id)
-                unsubscribe_url = f"http://localhost:8000/api/notifications/unsubscribe?token={unsubscribe_token}"
+                unsubscribe_url = f"{_get_public_base_url()}/api/notifications/unsubscribe?token={unsubscribe_token}"
 
                 # Render message
                 try:
@@ -543,9 +543,15 @@ async def dispatch_pending_notifications(
     return count
 
 
+def _get_public_base_url() -> str:
+    from backend.app.config import get_settings
+    return get_settings().public_base_url.rstrip("/")
+
+
 def render_template(template_str: str, context: dict[str, Any]) -> str:
-    from jinja2 import Template
-    t = Template(template_str)
+    from jinja2.sandbox import SandboxedEnvironment
+    env = SandboxedEnvironment()
+    t = env.from_string(template_str)
     return str(t.render(**context))
 
 

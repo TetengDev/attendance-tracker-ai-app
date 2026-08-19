@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -27,6 +27,16 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
 TriggerStatusType = Literal["absent", "late", "retraction"]
+
+_RULE_AUDIT_FIELDS = (
+    "group_id",
+    "person_kind",
+    "trigger_status",
+    "delay_minutes",
+    "channel",
+    "template",
+    "is_active",
+)
 
 
 class NotificationRuleSchema(StrictSchema):
@@ -72,11 +82,11 @@ class GuardianPreferenceInfo(StrictSchema):
 
 
 def validate_jinja2_template(template_str: str) -> None:
-    from jinja2 import Environment
     from jinja2.exceptions import TemplateSyntaxError
+    from jinja2.sandbox import SandboxedEnvironment
 
     try:
-        Environment().parse(template_str)
+        SandboxedEnvironment().parse(template_str)
     except TemplateSyntaxError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -155,15 +165,7 @@ async def create_rule(
         before=None,
         after=snapshot(
             rule,
-            (
-                "group_id",
-                "person_kind",
-                "trigger_status",
-                "delay_minutes",
-                "channel",
-                "template",
-                "is_active",
-            ),
+            _RULE_AUDIT_FIELDS,
         ),
     )
     await session.commit()
@@ -194,30 +196,22 @@ async def update_rule(
     actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
     before_snap = snapshot(
         rule,
-        (
-            "group_id",
-            "person_kind",
-            "trigger_status",
-            "delay_minutes",
-            "channel",
-            "template",
-            "is_active",
-        ),
+        _RULE_AUDIT_FIELDS,
     )
 
-    if payload.group_id is not None or "group_id" in payload.model_fields_set:
+    if "group_id" in payload.model_fields_set:
         rule.group_id = payload.group_id
-    if payload.person_kind is not None:
+    if "person_kind" in payload.model_fields_set:
         rule.person_kind = payload.person_kind
-    if payload.trigger_status is not None:
+    if "trigger_status" in payload.model_fields_set and payload.trigger_status is not None:
         rule.trigger_status = payload.trigger_status
-    if payload.delay_minutes is not None:
+    if "delay_minutes" in payload.model_fields_set and payload.delay_minutes is not None:
         rule.delay_minutes = payload.delay_minutes
-    if payload.channel is not None:
+    if "channel" in payload.model_fields_set and payload.channel is not None:
         rule.channel = payload.channel
-    if payload.template is not None:
-        rule.template = cast(Any, payload.template)
-    if payload.is_active is not None:
+    if "template" in payload.model_fields_set and payload.template is not None:
+        rule.template = payload.template
+    if "is_active" in payload.model_fields_set and payload.is_active is not None:
         rule.is_active = payload.is_active
 
     await session.flush()
@@ -230,15 +224,7 @@ async def update_rule(
         before=before_snap,
         after=snapshot(
             rule,
-            (
-                "group_id",
-                "person_kind",
-                "trigger_status",
-                "delay_minutes",
-                "channel",
-                "template",
-                "is_active",
-            ),
+            _RULE_AUDIT_FIELDS,
         ),
     )
     await session.commit()
@@ -265,15 +251,7 @@ async def delete_rule(
     actor = RequestActor(admin_user.id, actor.request_id, actor.ip_address)
     before_snap = snapshot(
         rule,
-        (
-            "group_id",
-            "person_kind",
-            "trigger_status",
-            "delay_minutes",
-            "channel",
-            "template",
-            "is_active",
-        ),
+        _RULE_AUDIT_FIELDS,
     )
 
     await session.delete(rule)

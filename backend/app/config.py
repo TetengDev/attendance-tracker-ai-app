@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     audit_chain_export_environment: str = "production"
     audit_chain_export_deployment_id: str | None = None
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5178,http://127.0.0.1:5178"
+    public_base_url: str = "http://localhost:8000"
 
 
 @lru_cache
