@@ -1,0 +1,1 @@
+Hello {{ guardian_name }}, {{ person_name }} arrived late for shift {{ shift_name }} on {{ date }} at {{ time }}. Unsubscribe: {{ unsubscribe_url }}

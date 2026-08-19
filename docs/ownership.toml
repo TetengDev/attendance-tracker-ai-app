@@ -558,3 +558,12 @@ paths = [
   "docs/ownership.toml",
 ]
 
+[[ownership]]
+issue = "phase-9-notifications-templates-preferences"
+paths = [
+  "backend/app/notifications/templates/**",
+  "backend/app/api/notifications.py",
+  "backend/tests/test_notifications_api.py",
+  "docs/ownership.toml",
+]
+

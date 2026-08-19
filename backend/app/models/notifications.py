@@ -95,7 +95,7 @@ class NotificationRule(Base):
     channel: Mapped[ContactChannel] = mapped_column(
         String(32), nullable=False, default=ContactChannel.SMS
     )
-    template: Mapped[Text] = mapped_column(Text, nullable=False)
+    template: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
