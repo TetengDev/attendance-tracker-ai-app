@@ -304,15 +304,20 @@ async def erase_person(
     from sqlalchemy import delete
 
     from backend.app.face.gallery import GalleryEntry, bump_gallery_version
-    from backend.app.models.biometrics import FaceEmbedding
+    from backend.app.models.biometrics import Consent, EnrollmentAsset, FaceEmbedding
+    from backend.app.models.people import PersonGroup, PersonGuardian
 
     try:
         # 1. Fetch the person (RBAC scoped)
         person = await service.get(session, admin_user, person_id, business_date=business_date)
         before = snapshot(person, PERSON_FIELDS)
 
-        # 2. Hard-delete FaceEmbedding records
+        # 2. Hard-delete FaceEmbedding, EnrollmentAsset, Consent, and relationship links
         await session.execute(delete(FaceEmbedding).where(FaceEmbedding.person_id == person_id))
+        await session.execute(delete(EnrollmentAsset).where(EnrollmentAsset.person_id == person_id))
+        await session.execute(delete(Consent).where(Consent.person_id == person_id))
+        await session.execute(delete(PersonGroup).where(PersonGroup.person_id == person_id))
+        await session.execute(delete(PersonGuardian).where(PersonGuardian.person_id == person_id))
 
         # 3. Null PII fields on Person
         person.display_name = "Erased Person"

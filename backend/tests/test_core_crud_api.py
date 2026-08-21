@@ -488,8 +488,9 @@ def test_person_erase_endpoint(monkeypatch: MonkeyPatch) -> None:
         model_version = "v1"
 
     class EraseSession:
-        committed = False
-        executed_deletes = 0
+        def __init__(self) -> None:
+            self.committed = False
+            self.deleted_tables: set[str] = set()
 
         async def commit(self) -> None:
             self.committed = True
@@ -507,8 +508,11 @@ def test_person_erase_endpoint(monkeypatch: MonkeyPatch) -> None:
             *args: Any,
             **kwargs: Any,
         ) -> object:
-            if "DELETE FROM face_embeddings" in str(statement):
-                self.executed_deletes += 1
+            stmt_str = str(statement)
+            if "DELETE FROM" in stmt_str:
+                for table in ["face_embeddings", "enrollment_assets", "consents", "person_groups", "person_guardians"]:
+                    if table in stmt_str:
+                        self.deleted_tables.add(table)
 
             class FakeResult:
                 def scalar_one_or_none(self_inner: object) -> object:
@@ -546,7 +550,13 @@ def test_person_erase_endpoint(monkeypatch: MonkeyPatch) -> None:
     assert not person.is_active
 
     # Verify session deletions & commits
-    assert erase_sess.executed_deletes == 1
+    assert erase_sess.deleted_tables == {
+        "face_embeddings",
+        "enrollment_assets",
+        "consents",
+        "person_groups",
+        "person_guardians",
+    }
     assert erase_sess.committed
 
     # Verify gallery index convergence was triggered
