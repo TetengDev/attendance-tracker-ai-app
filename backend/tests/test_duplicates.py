@@ -123,6 +123,7 @@ def make_mock_embedding(
         id=emb_id,
         person_id=person_id,
         asset_id=a_id,
+        encryption_asset_id=a_id,
         envelope_version=payload.version,
         payload_alg=payload.payload_alg,
         dek_wrap_alg=payload.dek_wrap_alg,
@@ -132,6 +133,9 @@ def make_mock_embedding(
         payload_nonce=payload.payload_nonce,
         ciphertext=payload.ciphertext,
         is_active=True,
+        model_name="arcface",
+        model_version="w600k_r50",
+        policy_version="privacy-v1",
     )
 
 

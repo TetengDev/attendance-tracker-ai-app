@@ -9,10 +9,12 @@ from typing import Any, cast
 from uuid import UUID
 
 import numpy as np
+from cryptography.exceptions import InvalidTag
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
+from backend.app.crypto.keys import KeyConfigurationError
 from backend.app.face.gallery import GalleryEntry, GalleryIndex
 from backend.app.models.biometrics import FaceEmbedding
 from backend.app.models.people import Person
@@ -40,7 +42,7 @@ async def load_active_gallery_entries(db: AsyncSession) -> list[GalleryEntry]:
         )
         try:
             # Use the correct AAD matching enrollment.py
-            aad = f"face-embedding:{emb.person_id}:{emb.asset_id}".encode()
+            aad = f"face-embedding:{emb.person_id}:{emb.encryption_asset_id}".encode()
             vector = decrypt_embedding(payload, aad=aad)
             entries.append(
                 GalleryEntry(
@@ -49,6 +51,9 @@ async def load_active_gallery_entries(db: AsyncSession) -> list[GalleryEntry]:
                     vector=vector,
                 )
             )
+        except (KeyConfigurationError, InvalidTag) as exc:
+            logger.error("Cryptographic decryption failed for embedding %s: %s", emb.id, exc)
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to decrypt embedding %s: %s", emb.id, exc)
     return entries

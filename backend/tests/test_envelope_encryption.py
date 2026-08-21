@@ -161,3 +161,93 @@ def test_rewrap_rotates_dek_without_touching_payload_ciphertext() -> None:
 
     with pytest.raises(KeyConfigurationError):
         decrypt_embedding(rotated, aad=aad, keyring=keyring_for(old_key))
+
+
+def test_restore_backup_without_proper_kek_fails_loudly() -> None:
+    # 1. Encrypt an embedding with a valid key (representing production data)
+    prod_key = KeyEncryptionKey(key_id="kek-prod", material=bytes([5]) * 32)
+    embedding = np.linspace(-1.0, 1.0, 512, dtype=np.float32)
+    aad = b"face-embedding:person-1:asset-1"
+    
+    encrypted = encrypt_embedding(embedding, aad=aad, kek=prod_key)
+    
+    # 2. Attempt to decrypt with a keyring that does NOT have the proper key
+    restored_keyring = keyring_for(
+        KeyEncryptionKey(key_id="kek-dev", material=bytes([9]) * 32)
+    )
+    
+    with pytest.raises(KeyConfigurationError) as exc_info:
+        decrypt_embedding(encrypted, aad=aad, keyring=restored_keyring)
+    assert "KEK not available" in str(exc_info.value)
+
+    # 3. Attempt to decrypt with a key that has the same ID but WRONG material
+    wrong_keyring = keyring_for(
+        KeyEncryptionKey(key_id="kek-prod", material=bytes([7]) * 32)
+    )
+    
+    with pytest.raises(InvalidTag):
+        decrypt_embedding(encrypted, aad=aad, keyring=wrong_keyring)
+
+
+@pytest.mark.anyio
+async def test_load_active_gallery_entries_propagates_cryptographic_errors() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.app.api.ws_scan import load_active_gallery_entries
+    from backend.app.models.biometrics import FaceEmbedding
+
+    # 1. Prepare mock active FaceEmbedding
+    fake_emb = MagicMock(spec=FaceEmbedding)
+    fake_emb.person_id = "fake-person-id"
+    fake_emb.encryption_asset_id = "fake-asset-id"
+    fake_emb.envelope_version = 1
+    fake_emb.payload_alg = "AES-256-GCM"
+    fake_emb.dek_wrap_alg = "AES-256-GCM"
+    fake_emb.encryption_key_id = "env:test"
+    fake_emb.wrapped_dek = b"invalid-dek"
+    fake_emb.dek_nonce = b"invalid-nonce"
+    fake_emb.payload_nonce = b"invalid-nonce"
+    fake_emb.ciphertext = b"invalid-ciphertext"
+
+    # 2. Mock DB session
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [fake_emb]
+    
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    # 3. Call and assert it propagates InvalidTag
+    with pytest.raises(InvalidTag):
+        await load_active_gallery_entries(mock_db, "fake-model", "v1")
+
+
+@pytest.mark.anyio
+async def test_duplicates_load_active_gallery_entries_propagates_cryptographic_errors() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.app.enrollment.duplicates import load_active_gallery_entries
+    from backend.app.models.biometrics import FaceEmbedding
+
+    # 1. Prepare mock active FaceEmbedding
+    fake_emb = MagicMock(spec=FaceEmbedding)
+    fake_emb.person_id = "fake-person-id"
+    fake_emb.encryption_asset_id = "fake-asset-id"
+    fake_emb.envelope_version = 1
+    fake_emb.payload_alg = "AES-256-GCM"
+    fake_emb.dek_wrap_alg = "AES-256-GCM"
+    fake_emb.encryption_key_id = "env:test"
+    fake_emb.wrapped_dek = b"invalid-dek"
+    fake_emb.dek_nonce = b"invalid-nonce"
+    fake_emb.payload_nonce = b"invalid-nonce"
+    fake_emb.ciphertext = b"invalid-ciphertext"
+
+    # 2. Mock DB session
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [fake_emb]
+    
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    # 3. Call and assert it propagates InvalidTag
+    with pytest.raises(InvalidTag):
+        await load_active_gallery_entries(mock_db)
