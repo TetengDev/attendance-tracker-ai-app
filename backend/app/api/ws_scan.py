@@ -17,6 +17,7 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
+from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -45,6 +46,7 @@ from backend.app.auth.device import (
 )
 from backend.app.config import get_settings
 from backend.app.crypto.envelope import EncryptedPayload, decrypt_embedding
+from backend.app.crypto.keys import KeyConfigurationError
 from backend.app.db.session import get_session
 from backend.app.errors import DomainError, ErrorCode
 from backend.app.face.gallery import (
@@ -125,6 +127,9 @@ async def load_active_gallery_entries(
                     vector=vector,
                 )
             )
+        except (KeyConfigurationError, InvalidTag) as exc:
+            logger.error("Cryptographic decryption failed for embedding %s: %s", emb.id, exc)
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to decrypt embedding %s: %s", emb.id, exc)
     return entries
