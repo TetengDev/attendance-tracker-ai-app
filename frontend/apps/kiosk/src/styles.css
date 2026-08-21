@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary: var(--primary-color, #22d3ee);
+  --color-accent: var(--accent-color, #10b981);
+}
+
 @keyframes scan-line {
   0% { top: 0%; }
   50% { top: 100%; }
