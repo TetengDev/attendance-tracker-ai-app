@@ -28,29 +28,32 @@ function Sidebar() {
   ];
 
   return (
-    <div className="w-64 bg-zinc-950 text-white flex flex-col h-screen border-r border-zinc-800 no-print">
+    <div className="w-64 bg-canvas text-white flex flex-col h-screen border-r border-hairline no-print">
       <div className="p-6 flex items-center gap-3">
-        <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="h-8 w-8 bg-surface-card border border-hairline flex items-center justify-center relative overflow-hidden rounded-none">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red" />
+          <svg className="w-4 h-4 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <span className="font-bold tracking-wider text-sm uppercase">Aegis Admin</span>
+        <span className="font-bold tracking-widest text-sm uppercase">Aegis Admin</span>
       </div>
       
-      <nav className="flex-1 px-4 py-4 space-y-1">
+      <div className="h-[4px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red w-full shrink-0" />
+      
+      <nav className="flex-1 px-4 py-6 space-y-2">
         {navItems.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={item.isEmergency 
-              ? "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-rose-400 hover:text-white hover:bg-rose-500/10 active:bg-rose-500/20"
-              : "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-white/5 active:bg-white/10"
+              ? "flex items-center gap-3 px-3 py-2.5 rounded-none text-sm font-medium transition-all duration-200 text-rose-500 hover:bg-rose-950/20"
+              : "flex items-center gap-3 px-3 py-2.5 rounded-none text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-surface-card"
             }
             activeProps={{ 
               className: item.isEmergency 
-                ? "bg-rose-500/25 text-rose-400 font-bold border-l-4 border-rose-500 pl-2" 
-                : "bg-cyan-500/10 text-cyan-400 font-semibold" 
+                ? "bg-rose-950/30 text-rose-500 font-bold border-l-2 border-m-red pl-2" 
+                : "bg-surface-card text-white border-l-2 border-m-red pl-2 font-bold" 
             }}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -58,15 +61,15 @@ function Sidebar() {
               {item.label === "Settings" && <circle cx="12" cy="12" r="3" strokeWidth={1.5} />}
               {item.label !== "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
             </svg>
-            {item.label}
+            <span className="uppercase tracking-wider text-[11px] font-bold">{item.label}</span>
           </Link>
         ))}
       </nav>
 
       <div className="p-4 mt-auto">
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <p className="text-xs text-zinc-400 mb-2">API Endpoint</p>
-          <p className="text-[10px] font-mono text-cyan-400 break-all">{apiBaseUrl}</p>
+        <div className="bg-surface-soft border border-hairline rounded-none p-4">
+          <p className="text-[10px] text-muted-color mb-1 uppercase tracking-wider font-bold">API Endpoint</p>
+          <p className="text-[9px] font-mono text-body-strong break-all">{apiBaseUrl}</p>
         </div>
       </div>
     </div>
@@ -75,14 +78,14 @@ function Sidebar() {
 
 function AdminLayout() {
   return (
-    <div className="flex min-h-screen bg-zinc-50 font-sans text-zinc-900">
+    <div className="flex min-h-screen bg-canvas font-sans text-white">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-zinc-200 flex items-center justify-between px-8 shrink-0 no-print">
-          <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider">Console Overview</h2>
+        <header className="h-16 bg-surface-soft border-b border-hairline flex items-center justify-between px-8 shrink-0 no-print">
+          <h2 className="text-xs font-bold text-white uppercase tracking-widest">Console Overview</h2>
           <div className="flex items-center gap-4">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-semibold text-emerald-600 tracking-wide uppercase">System Healthy</span>
+            <span className="text-[10px] font-bold text-emerald-500 tracking-widest uppercase">System Healthy</span>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-8">
@@ -120,57 +123,58 @@ const indexRoute = createRoute({
 
     return (
       <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Dashboard</h1>
-          <p className="text-zinc-500 mt-1">Overview of your attendance and biometric operations.</p>
+        <div className="mb-8 border-b border-hairline pb-6">
+          <h1 className="text-4xl font-bold uppercase tracking-widest text-white">Dashboard</h1>
+          <p className="text-body-color text-sm font-light mt-1">Overview of attendance and biometric operations.</p>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center p-12">
-            <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+            <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin"></div>
           </div>
         ) : isError ? (
-          <div className="p-12 text-center text-red-500 font-medium">Error loading dashboard metrics.</div>
+          <div className="p-12 text-center text-red-500 font-bold uppercase tracking-wider">Error loading dashboard metrics.</div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {[
-                { label: "Active People", value: metrics?.active_people || 0, trend: "Current", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" },
+                { label: "Active People", value: metrics?.active_people || 0, trend: "Current Enrollment", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" },
                 { label: "Registered Kiosks", value: metrics?.active_kiosks || 0, trend: "All online", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
                 { label: "Scans Today", value: metrics?.scans_today || 0, trend: "Today's logs", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
               ].map((stat, i) => (
-                <div key={i} className="bg-white rounded-2xl p-6 border border-zinc-200 shadow-sm hover:shadow-md transition-shadow">
+                <div key={i} className="bg-surface-card p-6 border border-hairline rounded-none transition-colors relative overflow-hidden group hover:border-white">
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-medium text-zinc-500">{stat.label}</p>
-                      <p className="text-3xl font-bold text-zinc-900 mt-2">{stat.value}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-color">{stat.label}</p>
+                      <p className="text-4xl font-bold text-white mt-2 font-mono">{stat.value}</p>
                     </div>
-                    <div className="p-3 bg-cyan-50 text-cyan-600 rounded-xl">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="p-3 bg-surface-soft text-white border border-hairline rounded-none">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={stat.icon} />
                       </svg>
                     </div>
                   </div>
-                  <p className="text-sm text-zinc-500 mt-4 font-medium">{stat.trend}</p>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-color mt-4 font-bold">{stat.trend}</p>
                 </div>
               ))}
             </div>
 
-            <div className="bg-white rounded-2xl border border-zinc-200 p-8 shadow-sm">
-              <h3 className="text-lg font-semibold text-zinc-900 mb-6">Recent Activity</h3>
+            <div className="bg-surface-card border border-hairline p-8 rounded-none">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white mb-6">Recent Activity</h3>
               {!metrics?.recent_activity || metrics.recent_activity.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
-                  <svg className="w-12 h-12 mb-4 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="flex flex-col items-center justify-center py-12 text-muted-color">
+                  <svg className="w-12 h-12 mb-4 text-hairline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p>No activity recorded today.</p>
+                  <p className="uppercase text-xs font-bold tracking-wider">No activity recorded today.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {metrics.recent_activity.map((activity: any) => (
-                    <div key={activity.id} className="flex items-center justify-between p-4 rounded-xl border border-zinc-100 bg-zinc-50/50 hover:bg-zinc-50 transition-colors">
+                    <div key={activity.id} className="flex items-center justify-between p-4 rounded-none border border-hairline bg-surface-soft hover:bg-surface-elevated transition-colors">
                       <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-lg ${activity.outcome === 'accepted' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                        <div className={`p-2 rounded-none ${activity.outcome === 'accepted' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800' : 'bg-red-950/40 text-red-400 border border-red-800'}`}>
                           {activity.outcome === 'accepted' ? (
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                           ) : (
@@ -178,11 +182,11 @@ const indexRoute = createRoute({
                           )}
                         </div>
                         <div>
-                          <p className="font-semibold text-zinc-900">{activity.person_name}</p>
-                          <p className="text-xs text-zinc-500 capitalize">Scan {activity.direction} • {activity.outcome}</p>
+                          <p className="font-bold text-white uppercase text-xs tracking-wider">{activity.person_name}</p>
+                          <p className="text-[10px] text-muted-color uppercase tracking-wider mt-0.5">Scan {activity.direction} • {activity.outcome}</p>
                         </div>
                       </div>
-                      <div className="text-sm text-zinc-500 font-medium">
+                      <div className="text-xs text-muted-color font-bold tracking-wider">
                         {new Date(activity.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
@@ -945,11 +949,11 @@ function DeviceRegistrationModal({ isOpen, onClose, onSuccess }: { isOpen: boole
   }
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
-        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">Register Kiosk Device</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
+    <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+      <div className="bg-canvas rounded-none border border-hairline w-full max-w-md overflow-hidden animate-scale-up">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-white">Register Kiosk Device</h2>
+          <button onClick={onClose} className="text-muted-color hover:text-white">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -958,44 +962,44 @@ function DeviceRegistrationModal({ isOpen, onClose, onSuccess }: { isOpen: boole
         
         {pairingCode ? (
           <div className="p-8 text-center">
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-emerald-950/40 text-emerald-400 border border-emerald-800 rounded-none flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             </div>
-            <h3 className="text-xl font-bold text-zinc-900 mb-2">Registration Successful</h3>
-            <p className="text-zinc-500 mb-6">Enter this pairing code on the physical device to complete setup:</p>
-            <div className="bg-zinc-100 text-zinc-900 font-mono text-4xl tracking-[0.2em] py-4 rounded-xl font-bold">
+            <h3 className="text-lg font-bold text-white uppercase tracking-wider mb-2">Registration Successful</h3>
+            <p className="text-xs text-muted-color uppercase tracking-wider mb-6">Enter this pairing code on the physical device:</p>
+            <div className="bg-surface-soft text-white font-mono text-4xl tracking-[0.2em] py-4 rounded-none font-bold border border-hairline">
               {pairingCode}
             </div>
-            <p className="text-xs text-zinc-400 mt-4">This code expires in 15 minutes.</p>
-            <button onClick={onSuccess} className="w-full mt-6 bg-cyan-600 text-white py-3 rounded-xl font-medium hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20">
+            <p className="text-[10px] text-muted-color uppercase tracking-wider mt-4">This code expires in 15 minutes.</p>
+            <button onClick={onSuccess} className="w-full mt-6 bg-transparent text-white border border-white py-3 rounded-none uppercase tracking-widest text-xs font-bold hover:bg-white hover:text-black transition-colors">
               Done
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6">
-            {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+            {error && <div className="mb-4 text-xs font-bold uppercase tracking-wider text-red-500 bg-red-950/40 p-3 rounded-none border border-red-800">{error}</div>}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Form Factor</label>
-                <select name="form_factor" className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1">Form Factor</label>
+                <select name="form_factor" className="w-full rounded-none border-hairline focus:border-white focus:ring-0 bg-surface-soft text-white py-2.5 px-3 border outline-none text-xs">
                   <option value="tablet">Tablet / iPad</option>
                   <option value="phone">Mobile Phone</option>
                   <option value="desktop">Desktop / Laptop</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Location</label>
-                <select name="location_id" className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1">Location</label>
+                <select name="location_id" className="w-full rounded-none border-hairline focus:border-white focus:ring-0 bg-surface-soft text-white py-2.5 px-3 border outline-none text-xs">
                   {locations?.map((loc: any) => (
                     <option key={loc.id} value={loc.id}>{loc.name}</option>
                   ))}
                 </select>
-                <p className="text-xs text-zinc-400 mt-1">The device will be assigned to this location.</p>
+                <p className="text-[9px] text-muted-color uppercase tracking-wider mt-1">The device will be assigned to this location.</p>
               </div>
             </div>
             <div className="mt-8 flex justify-end gap-3">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">Cancel</button>
-              <button type="submit" disabled={isSubmitting} className="bg-cyan-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-sm shadow-cyan-600/20">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-muted-color hover:text-white">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="bg-transparent text-white border border-white px-5 py-2 rounded-none uppercase tracking-widest text-xs font-bold hover:bg-white hover:text-black disabled:opacity-50 transition-colors">
                 {isSubmitting ? "Registering..." : "Generate Pairing Code"}
               </button>
             </div>
@@ -1065,22 +1069,22 @@ const devicesRoute = createRoute({
           <DeviceRegistrationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); refetch(); }} />
           
           {showCodeDetails && (
-            <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up p-8 text-center">
-                <div className="w-16 h-16 bg-cyan-100 text-cyan-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+              <div className="bg-canvas rounded-none border border-hairline w-full max-w-md overflow-hidden animate-scale-up p-8 text-center">
+                <div className="w-16 h-16 bg-surface-soft text-white border border-hairline rounded-none flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-zinc-900 mb-2">Device Pairing Code</h3>
-                <p className="text-zinc-500 mb-6 font-medium text-sm">Enter this pairing code on the physical device to pair it:</p>
-                <div className="bg-zinc-100 text-zinc-900 font-mono text-4xl tracking-[0.2em] py-4 rounded-xl font-bold select-all">
+                <h3 className="text-lg font-bold text-white uppercase tracking-wider mb-2">Device Pairing Code</h3>
+                <p className="text-muted-color mb-6 uppercase tracking-wider text-xs">Enter this pairing code on the physical device:</p>
+                <div className="bg-surface-soft text-white font-mono text-4xl tracking-[0.2em] py-4 rounded-none font-bold border border-hairline select-all">
                   {showCodeDetails.code}
                 </div>
-                <p className="text-xs text-zinc-400 mt-4">This code expires in 15 minutes.</p>
+                <p className="text-[10px] text-muted-color uppercase tracking-wider mt-4">This code expires in 15 minutes.</p>
                 <button 
                   onClick={() => setShowCodeDetails(null)} 
-                  className="w-full mt-6 bg-zinc-900 text-white py-3 rounded-xl font-medium hover:bg-zinc-800 transition-colors shadow-sm"
+                  className="w-full mt-6 bg-transparent text-white border border-white py-3 rounded-none uppercase tracking-widest text-xs font-bold hover:bg-white hover:text-black transition-colors"
                 >
                   Close
                 </button>
@@ -1088,28 +1092,28 @@ const devicesRoute = createRoute({
             </div>
           )}
 
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-8 border-b border-hairline pb-6">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Kiosks & Devices</h1>
-              <p className="text-zinc-500 mt-1">Monitor connected physical devices and attendance kiosks.</p>
+              <h1 className="text-4xl font-bold uppercase tracking-widest text-white">Kiosks & Devices</h1>
+              <p className="text-body-color text-sm font-light mt-1">Monitor connected physical devices and attendance kiosks.</p>
             </div>
-            <button onClick={() => setIsModalOpen(true)} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20">
+            <button onClick={() => setIsModalOpen(true)} className="bg-transparent text-white border border-white px-4 py-2 rounded-none hover:bg-white hover:text-black uppercase tracking-widest text-xs font-bold transition-colors">
               + Register Device
             </button>
           </div>
           
-          <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+          <div className="bg-surface-card border border-hairline rounded-none overflow-hidden">
             {isLoading ? (
               <div className="p-12 flex justify-center">
-                <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+                <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin"></div>
               </div>
             ) : isError ? (
-              <div className="p-12 text-center text-red-500 font-medium">Error loading devices.</div>
+              <div className="p-12 text-center text-red-500 font-bold uppercase tracking-wider">Error loading devices.</div>
             ) : devices?.length === 0 ? (
-              <div className="p-12 text-center text-zinc-500">No registered devices found.</div>
+              <div className="p-12 text-center text-muted-color uppercase text-xs font-bold tracking-wider">No registered devices found.</div>
             ) : (
               <table className="w-full text-left text-sm">
-                <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
+                <thead className="bg-surface-soft border-b border-hairline text-muted-color font-bold uppercase tracking-wider text-[11px]">
                   <tr>
                     <th className="px-6 py-4">ID Prefix</th>
                     <th className="px-6 py-4">Form Factor</th>
@@ -1118,45 +1122,45 @@ const devicesRoute = createRoute({
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-hairline">
                   {devices?.map((d) => (
-                    <tr key={d.id} className="hover:bg-zinc-50/50 transition-colors">
+                    <tr key={d.id} className="hover:bg-surface-elevated transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-semibold text-zinc-900 font-mono">{d.id.substring(0, 8)}...</div>
-                        <div className="text-xs text-zinc-500 mt-0.5">Token: {d.token_display_prefix === 'unpaired' ? 'Unpaired' : `***${d.token_display_prefix}`}</div>
+                        <div className="font-bold text-white font-mono text-xs tracking-wider">{d.id.substring(0, 8)}...</div>
+                        <div className="text-[10px] text-muted-color uppercase tracking-wider mt-0.5">Token: {d.token_display_prefix === 'unpaired' ? 'Unpaired' : `***${d.token_display_prefix}`}</div>
                       </td>
-                      <td className="px-6 py-4 capitalize font-medium text-zinc-700">
+                      <td className="px-6 py-4 capitalize font-light text-body-color text-xs">
                         {d.form_factor}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2 py-1 rounded text-xs uppercase tracking-wider font-semibold">
+                        <span className="bg-surface-soft text-body-strong border border-hairline px-2 py-0.5 rounded-none text-[10px] uppercase tracking-wider font-bold">
                           {d.mode}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         {d.token_display_prefix !== 'unpaired' ? (
-                          <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold uppercase tracking-wider">
+                          <span className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                             <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Paired
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1.5 text-amber-500 text-xs font-semibold uppercase tracking-wider">
-                            <span className="h-1.5 w-1.5 bg-amber-400 rounded-full"></span> Unpaired
+                          <span className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 bg-amber-500 rounded-full"></span> Unpaired
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
+                      <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
                         {d.token_display_prefix === 'unpaired' && (
                           <button 
                             onClick={() => handleShowCode(d.id)}
                             disabled={isGeneratingCode === d.id}
-                            className="text-cyan-600 hover:text-cyan-700 disabled:text-zinc-400 font-medium text-sm"
+                            className="text-white hover:underline disabled:text-hairline uppercase tracking-wider text-[10px] font-bold"
                           >
                             {isGeneratingCode === d.id ? "Generating..." : "Show Code"}
                           </button>
                         )}
                         <button 
                           onClick={() => handleDeleteDevice(d.id)}
-                          className="text-red-500 hover:text-red-700 font-medium text-sm"
+                          className="text-m-red hover:underline uppercase tracking-wider text-[10px] font-bold"
                         >
                           Delete
                         </button>

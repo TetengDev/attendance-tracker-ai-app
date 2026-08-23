@@ -725,20 +725,20 @@ export function App() {
   };
 
   return (
-    <main className="relative min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased overflow-hidden">
-      {/* Decorative neon gradient overlays */}
-      <div className="absolute -left-48 -top-48 h-96 w-96 rounded-full bg-primary/10 blur-[100px]" />
-      <div className="absolute -bottom-48 -right-48 h-96 w-96 rounded-full bg-indigo-500/10 blur-[100px]" />
-
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 border-b border-white/5">
+    <main className="relative min-h-screen bg-canvas font-sans text-white antialiased overflow-hidden">
+      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 border-b border-hairline shrink-0">
         <div className="flex items-center gap-3">
-          <span className="h-2.5 w-2.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_var(--primary-color)]" />
-          <span className="font-semibold tracking-tight text-lg">{(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Biometrics"}</span>
+          <div className="flex h-3 w-5 items-stretch relative overflow-hidden select-none">
+            <div className="w-1/3 bg-m-blue-light" />
+            <div className="w-1/3 bg-m-blue-dark" />
+            <div className="w-1/3 bg-m-red" />
+          </div>
+          <span className="font-bold tracking-widest text-sm uppercase">{(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Biometrics"}</span>
         </div>
         <div className="flex items-center gap-4">
           {/* Offline Queue Depth Badge */}
           {queueDepth > 0 && (
-            <div className="flex items-center gap-2 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 px-3.5 py-1.5 text-xs font-semibold animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.1)]">
+            <div className="flex items-center gap-2 rounded-none bg-surface-soft text-amber-500 border border-hairline px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider animate-pulse">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -747,21 +747,21 @@ export function App() {
           )}
 
           {/* WS Status Indicator */}
-          <div className="flex items-center gap-2 rounded-full bg-white/5 px-3.5 py-1 text-xs border border-white/10">
+          <div className="flex items-center gap-2 rounded-none bg-surface-soft px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-hairline">
             {wsStatus === "connected" ? (
               <>
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="text-zinc-300">Connected</span>
+                <span className="h-2 w-2 rounded-none bg-emerald-500" />
+                <span className="text-white">Connected</span>
               </>
             ) : wsStatus === "connecting" ? (
               <>
-                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-zinc-300">Connecting</span>
+                <span className="h-2 w-2 rounded-none bg-amber-500 animate-pulse" />
+                <span className="text-white">Connecting</span>
               </>
             ) : (
               <>
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <span className="text-zinc-300">Disconnected</span>
+                <span className="h-2 w-2 rounded-none bg-red-500 animate-pulse" />
+                <span className="text-white">Disconnected</span>
               </>
             )}
           </div>
@@ -777,7 +777,7 @@ export function App() {
                 // When entering enrollment mode, pause scanning; when leaving, resume scanning
                 setActiveScan(!enteringEnroll);
               }}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors border ${showEnroll ? "bg-amber-500 text-zinc-950 border-amber-600" : "bg-emerald-500 text-zinc-950 border-emerald-600"}`}
+              className="rounded-none border border-white bg-transparent text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
               title={showEnroll ? "Click to switch to Scan Mode" : "Click to switch to Registration Mode"}
             >
               {showEnroll ? "Registration Mode" : "Scan Mode"}
@@ -787,7 +787,7 @@ export function App() {
           {wsStatus === "disconnected" && (
             <button
               onClick={fetchToken}
-              className="rounded-full bg-cyan-500 px-4 py-1 text-xs font-semibold text-zinc-950 hover:bg-cyan-400 transition-colors shadow-lg shadow-cyan-500/20"
+              className="rounded-none border border-white bg-transparent text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
             >
               Connect Kiosk
             </button>
@@ -805,7 +805,7 @@ export function App() {
                   setShowEnroll(false);
                 }
               }}
-              className={`ml-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors border ${activeScan ? 'bg-red-500 text-white border-red-600' : 'bg-emerald-500 text-zinc-950 border-emerald-600'}`}
+              className="ml-2 rounded-none border border-white bg-transparent text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
             >
               {activeScan ? 'Stop Scanning' : 'Start Scanning'}
             </button>
@@ -816,7 +816,7 @@ export function App() {
       <section className={`mx-auto grid max-w-5xl gap-8 px-6 py-12 ${import.meta.env.DEV ? "md:grid-cols-3" : "md:grid-cols-1 justify-center max-w-2xl"}`}>
         {/* Left Side: Scan Feed and Centering Overlays */}
         <div className={import.meta.env.DEV ? "md:col-span-2 flex flex-col gap-4" : "flex flex-col gap-4"}>
-          <div className="relative aspect-[4/3] rounded-3xl overflow-hidden border border-white/10 bg-black shadow-2xl">
+          <div className="relative aspect-[4/3] rounded-none overflow-hidden border border-hairline bg-black">
             {/* Live Camera Feed */}
             <video
               ref={videoRef}
@@ -828,14 +828,14 @@ export function App() {
 
             {/* Glowing Laser Scan Bar */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-85 shadow-[0_0_12px_var(--primary-color)] animate-scan-line pointer-events-none" />
+              <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-m-red to-transparent opacity-85 shadow-[0_0_12px_rgba(226,39,24,0.8)] animate-scan-line pointer-events-none" />
             )}
 
             {/* Face centering guide target */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="h-56 w-56 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
-                  <div className="h-48 w-48 rounded-full border border-primary/20" />
+                <div className="h-56 w-56 rounded-full border-2 border-dashed border-white/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
+                  <div className="h-48 w-48 rounded-full border border-white/10" />
                 </div>
               </div>
             )}
@@ -847,13 +847,13 @@ export function App() {
 
             {/* Processing Identity Overlay */}
             {isMatching && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center pointer-events-none z-20">
+              <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center pointer-events-none z-20">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative h-16 w-16">
-                    <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
-                    <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                    <div className="absolute inset-0 rounded-full border-4 border-white/10" />
+                    <div className="absolute inset-0 rounded-full border-4 border-white border-t-transparent animate-spin" />
                   </div>
-                  <span className="text-primary font-mono text-sm tracking-[0.2em] font-semibold animate-pulse shadow-black drop-shadow-md">
+                  <span className="text-white font-mono text-xs tracking-[0.2em] font-bold animate-pulse shadow-black drop-shadow-md">
                     PROCESSING BIOMETRICS
                   </span>
                 </div>
@@ -862,13 +862,13 @@ export function App() {
 
             {/* Enrollment Guide Overlay */}
             {isScanRunning && showEnroll && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/10">
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/30">
                 {/* Face Silhouette Guide */}
-                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-primary shadow-[0_0_15px_var(--primary-color)] flex items-center justify-center animate-[pulse_2s_infinite]">
-                  <div className="h-56 w-40 rounded-[100px] border border-primary/30" />
+                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-white shadow-[0_0_15px_rgba(255,255,255,0.4)] flex items-center justify-center animate-[pulse_2s_infinite]">
+                  <div className="h-56 w-40 rounded-[100px] border border-white/20" />
                 </div>
                 {/* Text guide */}
-                <div className="absolute bottom-6 bg-zinc-950/95 border border-primary/30 rounded-full px-4 py-1.5 text-xs text-primary font-semibold tracking-wide shadow-lg backdrop-blur-sm">
+                <div className="absolute bottom-6 bg-canvas border border-hairline rounded-none px-4 py-1.5 text-[10px] text-white font-bold tracking-widest uppercase shadow-lg">
                   Position your face in the silhouette and click "Capture & Register"
                 </div>
               </div>
@@ -876,19 +876,19 @@ export function App() {
 
             {/* Disconnected Overlay */}
             {wsStatus !== "connected" && !isLoadingModel && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm z-10">
-                <svg className="h-12 w-12 text-zinc-500 mb-3 animate-[pulse_2s_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/90 backdrop-blur-sm z-10">
+                <svg className="h-12 w-12 text-hairline mb-3 animate-[pulse_2s_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 8.464M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
                 </svg>
-                <p className="text-zinc-300 text-sm font-semibold tracking-wide mb-1">Kiosk Offline</p>
-                <p className="text-zinc-500 text-xs">Click "Connect Kiosk" in the header to start scanning</p>
+                <p className="text-white text-xs font-bold tracking-widest uppercase mb-1">Kiosk Offline</p>
+                <p className="text-muted-color text-[10px] uppercase tracking-wider font-light">Click "Connect Kiosk" in the header to start scanning</p>
               </div>
             )}
 
             {/* Scan Mode Active Indicator */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute top-4 left-4 bg-zinc-950/85 border border-primary/30 rounded-full px-3 py-1 text-[10px] text-primary font-semibold tracking-wider uppercase backdrop-blur-sm z-10 flex items-center gap-1.5 shadow-lg shadow-primary/10">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <div className="absolute top-4 left-4 bg-canvas border border-hairline rounded-none px-3 py-1 text-[9px] text-white font-bold tracking-widest uppercase z-10 flex items-center gap-1.5 shadow-lg shadow-black/80">
+                <span className="h-1.5 w-1.5 rounded-none bg-m-red animate-pulse" />
                 <span>Kiosk Scan Mode Active</span>
               </div>
             )}
@@ -902,20 +902,20 @@ export function App() {
                   width: `${detectedBbox.w}%`,
                   height: `${detectedBbox.h}%`,
                 }}
-                className={`absolute border-2 rounded-2xl transition-all duration-75 pointer-events-none ${
+                className={`absolute border-2 rounded-none transition-all duration-75 pointer-events-none ${
                   showEnroll 
-                    ? "border-primary shadow-[0_0_8px_var(--primary-color)]" 
+                    ? "border-white shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
                     : reason 
-                    ? "border-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" 
-                    : "border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                    ? "border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]" 
+                    : "border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
                 }`}
               >
-                <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-[10px] font-semibold text-zinc-950 uppercase tracking-wider backdrop-blur-sm whitespace-nowrap ${
+                <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded-none text-[9px] font-bold text-black uppercase tracking-wider whitespace-nowrap ${
                   showEnroll 
-                    ? "bg-primary" 
+                    ? "bg-white" 
                     : reason 
-                    ? "bg-amber-400" 
-                    : "bg-emerald-400"
+                    ? "bg-amber-500" 
+                    : "bg-emerald-500"
                 }`}>
                   {showEnroll 
                     ? "Enrolling..." 
@@ -928,17 +928,17 @@ export function App() {
  
             {/* Analyzing Overlay */}
             {isMatching && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/60 backdrop-blur-[2px] z-10 animate-fade-in">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/80 backdrop-blur-[2px] z-10 animate-fade-in">
                 <div className="relative h-28 w-28 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                  <svg className="h-10 w-10 text-primary animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="absolute inset-0 rounded-full border-4 border-white/10 border-t-white animate-spin" />
+                  <svg className="h-10 w-10 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                 </div>
-                <p className="text-primary text-sm font-semibold tracking-wider uppercase mt-4 animate-pulse">
+                <p className="text-white text-xs font-bold tracking-widest uppercase mt-4 animate-pulse">
                   Analyzing Biometrics
                 </p>
-                <p className="text-zinc-400 text-xs mt-1">
+                <p className="text-muted-color text-[10px] uppercase tracking-wider mt-1">
                   Matching face against gallery...
                 </p>
               </div>
@@ -946,27 +946,27 @@ export function App() {
  
             {/* Loading / Startup Overlay */}
             {isLoadingModel && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 backdrop-blur-sm z-10">
-                <div className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                <p className="text-zinc-400 text-sm tracking-wide">Loading Face Engine WASM Models...</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-sm z-10">
+                <div className="h-10 w-10 border-4 border-white/10 border-t-white rounded-none animate-spin mb-4" />
+                <p className="text-muted-color text-xs font-bold uppercase tracking-widest">Loading Face Engine WASM Models...</p>
               </div>
             )}
  
             {/* Attendance Punch Result Notification Modal */}
             {scanResult && scanResult.person && (
-              <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/85 backdrop-blur-md z-20 animate-fade-in">
-                <div className="flex flex-col items-center text-center p-6 max-w-sm rounded-3xl bg-zinc-900 border border-white/10 shadow-2xl animate-scale-up">
-                  <div className="h-20 w-20 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center mb-5 animate-pulse">
+              <div className="absolute inset-0 flex items-center justify-center bg-canvas/90 backdrop-blur-md z-20 animate-fade-in">
+                <div className="flex flex-col items-center text-center p-6 max-w-sm rounded-none bg-surface-card border border-hairline shadow-2xl animate-scale-up">
+                  <div className="h-20 w-20 rounded-none bg-emerald-950/40 border border-emerald-800 flex items-center justify-center mb-5 animate-pulse">
                     <svg className="h-10 w-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                  <h3 className="text-2xl font-bold tracking-tight text-white mb-2">Punch Success</h3>
-                  <p className="text-zinc-300 text-lg mb-1">{scanResult.person.display_name}</p>
-                  <p className="text-zinc-500 text-xs uppercase tracking-widest mb-4">
+                  <h3 className="text-xl font-bold tracking-widest uppercase text-white mb-2">Punch Success</h3>
+                  <p className="text-white text-lg mb-1">{scanResult.person.display_name}</p>
+                  <p className="text-muted-color text-[10px] font-bold uppercase tracking-wider mb-4">
                     {scanResult.direction === "in" ? "CHECK-IN" : "CHECK-OUT"} • {new Date(scanResult.occurred_at).toLocaleTimeString()}
                   </p>
-                  <span className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-full px-3 py-1">
+                  <span className="text-[10px] text-white bg-surface-soft border border-hairline rounded-none px-3 py-1.5 uppercase font-bold tracking-widest">
                     Attendance Logged Durably
                   </span>
                 </div>
@@ -975,43 +975,43 @@ export function App() {
  
             {/* Gating Error Notification */}
             {scanError && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-red-950/90 border border-red-500/30 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
-                <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-                <span className="text-red-200 text-sm font-medium">{scanError}</span>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-red-950/90 border border-red-800 backdrop-blur-md rounded-none px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
+                <span className="h-2 w-2 rounded-none bg-red-400 animate-pulse" />
+                <span className="text-red-200 text-xs font-bold uppercase tracking-wider">{scanError}</span>
               </div>
             )}
  
             {/* Friendly Info Notification */}
             {scanInfo && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-zinc-950/90 border border-primary/30 backdrop-blur-md rounded-2xl px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
-                <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-primary text-sm font-medium">{scanInfo}</span>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-canvas border border-hairline backdrop-blur-md rounded-none px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
+                <span className="h-2 w-2 rounded-none bg-white animate-pulse" />
+                <span className="text-white text-xs font-bold uppercase tracking-wider">{scanInfo}</span>
               </div>
             )}
           </div>
  
           {/* Real-time scanning ticker / Gating feedback */}
-          <div className="flex items-center gap-3.5 rounded-2xl border border-white/5 bg-white/5 px-5 py-3 text-sm text-zinc-400 font-medium">
-            <span className={`h-2.5 w-2.5 rounded-full ${wsStatus === "connected" && isScanRunning ? "bg-primary animate-pulse" : "bg-zinc-600"}`} />
+          <div className="flex items-center gap-3.5 rounded-none border border-hairline bg-surface-soft px-5 py-3 text-xs text-muted-color font-bold uppercase tracking-wider">
+            <span className={`h-2.5 w-2.5 rounded-none ${wsStatus === "connected" && isScanRunning ? "bg-white animate-pulse" : "bg-hairline"}`} />
             <span>{gatingStatus}</span>
             {isScanRunning && wsStatus === "connected" && (
               <button
                 onClick={resetLockout}
-                className="ml-auto text-xs text-primary hover:opacity-85 transition-colors bg-primary/10 px-2.5 py-1 rounded-lg"
+                className="ml-auto text-[10px] font-bold uppercase tracking-widest text-white border border-white hover:bg-white hover:text-black bg-transparent px-2.5 py-1 rounded-none transition-colors"
               >
                 Reset Lockout
               </button>
             )}
           </div>
           {/* PIN / QR Code Fallback Card */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
+          <div className="rounded-none border border-hairline bg-surface-card p-6 shadow-lg">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">PIN / QR Code Fallback</h2>
-                  <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase font-mono">Accessibility</span>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-white">PIN / QR Code Fallback</h2>
+                  <span className="text-[9px] bg-surface-soft text-white border border-hairline px-2.5 py-0.5 rounded-none uppercase font-mono tracking-wider font-bold">Accessibility</span>
                 </div>
                 
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-body-color font-light">
                   Type your ID/PIN or position your QR code in front of the camera (simulated via text input).
                 </p>
  
@@ -1023,17 +1023,17 @@ export function App() {
                     value={pinValue}
                     onChange={(e) => setPinValue(e.target.value)}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="flex-1 rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-primary transition-colors"
+                    className="flex-1 rounded-none bg-surface-soft border border-hairline px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-0 transition-colors"
                   />
                   <button
                     type="submit"
                     disabled={isMatching || !pinValue.trim() || wsStatus !== "connected"}
-                    className="bg-primary disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 transition-all text-sm shadow-lg shadow-primary/10"
+                    className="bg-transparent border border-white disabled:border-hairline disabled:text-muted-color text-white font-bold px-5 py-2.5 rounded-none hover:bg-white hover:text-black transition-all text-xs uppercase tracking-widest"
                   >
                     Check In
                   </button>
                 </form>
-
+ 
                 {/* Tactile Touchscreen Keypad */}
                 <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto w-full pt-2">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
@@ -1042,7 +1042,7 @@ export function App() {
                       type="button"
                       onClick={() => handleKeypadPress(num.toString())}
                       disabled={isMatching || wsStatus !== "connected"}
-                      className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 hover:border-white/10 active:scale-95 transition-all text-sm select-none"
+                      className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
                     >
                       {num}
                     </button>
@@ -1051,7 +1051,7 @@ export function App() {
                     type="button"
                     onClick={handleKeypadClear}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-zinc-900 hover:bg-zinc-800 text-red-400 hover:text-red-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated text-m-red font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
                   >
                     Clear
                   </button>
@@ -1059,7 +1059,7 @@ export function App() {
                     type="button"
                     onClick={() => handleKeypadPress("0")}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
                   >
                     0
                   </button>
@@ -1067,7 +1067,7 @@ export function App() {
                     type="button"
                     onClick={handleKeypadBackspace}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-300 font-medium py-3 rounded-xl border border-white/5 active:scale-95 transition-all text-sm flex items-center justify-center select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs flex items-center justify-center select-none"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
@@ -1081,31 +1081,31 @@ export function App() {
         {/* Right Side: Setup instructions and Dev Tools */}
         {import.meta.env.DEV && (
           <div className="flex flex-col gap-6">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg">
+            <div className="rounded-none border border-hairline bg-surface-card p-6 shadow-lg">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">Local Dev Tools</h2>
-                <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full uppercase font-mono">Ready</span>
+                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Local Dev Tools</h2>
+                <span className="text-[9px] bg-surface-soft text-white border border-hairline px-2 py-0.5 rounded-none uppercase font-mono tracking-wider font-bold">Ready</span>
               </div>
               
-              <p className="text-xs text-zinc-400 mb-6">
+              <p className="text-xs text-body-color mb-6 font-light">
                 Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
               </p>
  
               {/* Relax scan criteria toggle */}
-              <div className="flex items-center justify-between bg-zinc-900/40 border border-white/5 rounded-2xl px-4 py-3 mb-4 select-none">
+              <div className="flex items-center justify-between bg-surface-soft border border-hairline rounded-none px-4 py-3 mb-4 select-none">
                 <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-semibold text-zinc-300">Relax Scan Criteria</span>
-                  <span className="text-[10px] text-zinc-500 leading-tight">Bypasses strict distance/lighting gates for easy local webcam testing</span>
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Relax Scan Criteria</span>
+                  <span className="text-[9px] text-muted-color uppercase tracking-wider mt-0.5 font-light">Bypasses strict distance/lighting gates</span>
                 </div>
                 <button
                   onClick={() => setRelaxedGating(!relaxedGating)}
-                  className={`relative inline-flex h-5.5 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                    relaxedGating ? "bg-primary shadow-[0_0_8px_var(--primary-color)]" : "bg-zinc-800"
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-sm transition-colors duration-200 ${
+                    relaxedGating ? "bg-white" : "bg-hairline"
                   }`}
                 >
                   <span
-                    className={`inline-block h-4.5 w-4.5 transform rounded-full bg-zinc-950 transition-transform duration-200 ${
-                      relaxedGating ? "translate-x-5" : "translate-x-0.5"
+                    className={`inline-block h-4 w-4 transform rounded-sm bg-canvas transition-transform duration-200 ${
+                      relaxedGating ? "translate-x-4.5" : "translate-x-0.5"
                     }`}
                   />
                 </button>
@@ -1117,15 +1117,15 @@ export function App() {
                   setEnrollSuccess(null);
                   setEnrollError(null);
                 }}
-                className="w-full rounded-2xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 mb-4"
+                className="w-full rounded-none border border-hairline hover:border-white bg-surface-soft py-3 text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center gap-2 mb-4"
               >
                 {showEnroll ? "Close Enrollment" : "Enroll Face Profile"}
               </button>
 
               {showEnroll && (
-                <div className="space-y-4 pt-4 border-t border-white/5 animate-fade-in">
+                <div className="space-y-4 pt-4 border-t border-hairline animate-fade-in">
                   <div>
-                    <label htmlFor="enroll-name" className="block text-xs font-semibold text-zinc-400 uppercase mb-2">
+                    <label htmlFor="enroll-name" className="block text-[10px] font-bold text-white uppercase tracking-wider mb-2">
                       Person Name
                     </label>
                     <input
@@ -1135,18 +1135,18 @@ export function App() {
                       value={enrollName}
                       onChange={(e) => setEnrollName(e.target.value)}
                       disabled={isEnrolling}
-                      className="w-full rounded-xl bg-zinc-900 border border-white/10 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-primary transition-colors"
+                      className="w-full rounded-none bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-0 transition-colors"
                     />
                   </div>
 
                   <button
                     onClick={enrollFace}
                     disabled={isEnrolling || !enrollName.trim()}
-                    className="w-full rounded-xl bg-primary disabled:bg-zinc-800 disabled:text-zinc-500 py-2.5 text-sm font-semibold text-zinc-950 hover:opacity-90 transition-all shadow-lg shadow-primary/10 flex items-center justify-center gap-2"
+                    className="w-full rounded-none bg-transparent border border-white disabled:border-hairline disabled:text-muted-color py-2.5 text-xs font-bold text-white hover:bg-white hover:text-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
                   >
                     {isEnrolling ? (
                       <>
-                        <div className="h-4 w-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-none animate-spin" />
                         Registering Biometrics...
                       </>
                     ) : (
@@ -1155,13 +1155,13 @@ export function App() {
                   </button>
 
                   {enrollSuccess && (
-                    <div className="rounded-xl bg-emerald-950/50 border border-emerald-500/20 p-3 text-xs text-emerald-300">
+                    <div className="rounded-none bg-emerald-950/40 border border-emerald-800 p-3 text-xs text-emerald-400 font-bold uppercase tracking-wider">
                       {enrollSuccess}
                     </div>
                   )}
 
                   {enrollError && (
-                    <div className="rounded-xl bg-red-950/50 border border-red-500/20 p-3 text-xs text-red-300">
+                    <div className="rounded-none bg-red-950/40 border border-red-800 p-3 text-xs text-red-400 font-bold uppercase tracking-wider">
                       {enrollError}
                     </div>
                   )}
@@ -1169,34 +1169,32 @@ export function App() {
               )}
 
               {/* List of current registrations */}
-              <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+              <div className="mt-4 pt-4 border-t border-hairline space-y-3">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-xs font-semibold text-zinc-400 uppercase">
+                  <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
                     Registered Profiles ({people.length})
                   </h3>
                   {people.length > 0 && (
                     <button
                       onClick={deleteAllPeople}
-                      className="text-[10px] text-red-400 hover:text-red-300 font-semibold transition-colors bg-red-500/10 hover:bg-red-500/20 px-2 py-0.5 rounded"
+                      className="text-[10px] text-m-red hover:underline font-bold uppercase tracking-wider transition-colors"
                     >
                       Delete All
                     </button>
                   )}
-                </div>
-
-                {people.length === 0 ? (
-                  <p className="text-[11px] text-zinc-500 italic">No face profiles registered yet.</p>
+                </div>                 {people.length === 0 ? (
+                  <p className="text-[9px] text-muted-color uppercase tracking-wider font-light">No face profiles registered yet.</p>
                 ) : (
                   <div className="max-h-36 overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
                     {people.map((p) => (
                       <div
                         key={p.id}
-                        className="flex items-center justify-between bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2 text-xs hover:border-white/10 transition-colors"
+                        className="flex items-center justify-between bg-surface-soft border border-hairline rounded-none px-3 py-2 text-xs hover:border-white transition-colors"
                       >
-                        <span className="font-medium truncate text-zinc-300">{p.display_name}</span>
+                        <span className="font-bold truncate text-white uppercase text-[10px] tracking-wider">{p.display_name}</span>
                         <button
                           onClick={() => deletePerson(p.id, p.display_name)}
-                          className="text-red-400 hover:text-red-300 transition-all p-1 hover:bg-red-500/10 rounded"
+                          className="text-m-red hover:text-red-500 transition-all p-1 rounded-none"
                           title="Delete profile"
                         >
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1208,30 +1206,32 @@ export function App() {
                   </div>
                 )}
               </div>
-            </div>            {/* Real-time Logs Console */}
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md shadow-lg flex flex-col h-80">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">Live Connection Logs</h2>
+            </div>
+            
+            {/* Real-time Logs Console */}
+            <div className="rounded-none border border-hairline bg-surface-card p-6 flex flex-col h-80">
+              <div className="flex justify-between items-center mb-3 border-b border-hairline pb-2">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Live Connection Logs</h2>
                 <button
                   onClick={() => setLogs([])}
-                  className="text-[10px] text-zinc-400 hover:text-primary bg-white/5 px-2.5 py-1 rounded-md border border-white/5 transition-all"
+                  className="text-[10px] text-muted-color hover:text-white bg-surface-soft px-2.5 py-1 rounded-none border border-hairline transition-all uppercase tracking-wider font-bold"
                 >
                   Clear Logs
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto font-mono text-[10px] text-zinc-300 space-y-1.5 p-3 rounded-xl bg-zinc-950/70 border border-white/5 select-text scrollbar-thin">
+              <div className="flex-1 overflow-y-auto font-mono text-[9px] text-body-color space-y-1.5 p-3 rounded-none bg-surface-soft border border-hairline select-text scrollbar-thin">
                 {logs.length === 0 ? (
-                  <p className="text-zinc-500 italic">No logs recorded yet.</p>
+                  <p className="text-muted-color italic uppercase">No logs recorded yet.</p>
                 ) : (
                   logs.map((log, idx) => (
                     <div
                       key={idx}
                       className={
                         log.includes("ERROR:") || log.includes("failed") || log.includes("closed")
-                          ? "text-red-400"
+                          ? "text-red-400 font-bold uppercase tracking-wider"
                           : log.includes("success") || log.includes("Success") || log.includes("opened")
-                          ? "text-emerald-400"
-                          : "text-zinc-300"
+                          ? "text-emerald-400 font-bold uppercase tracking-wider"
+                          : "text-body-strong font-light"
                       }
                     >
                       {log}
@@ -1242,14 +1242,14 @@ export function App() {
             </div>
  
             {/* Quickstart Reference Box */}
-            <div className="rounded-3xl border border-white/5 bg-zinc-900/50 p-6 space-y-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Step-by-step Test</h3>
-              <ol className="list-decimal list-inside space-y-2.5 text-xs text-zinc-400">
-                <li>Click <span className="text-primary">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
-                <li>Click <span className="text-primary">Enroll Face Profile</span>, enter your name, and click <span className="text-primary">Capture & Register</span>.</li>
+            <div className="rounded-none border border-hairline bg-surface-card p-6 space-y-4">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-white border-b border-hairline pb-2">Step-by-step Test</h3>
+              <ol className="list-decimal list-inside space-y-2.5 text-xs text-body-color font-light">
+                <li>Click <span className="text-white font-bold uppercase tracking-wider">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
+                <li>Click <span className="text-white font-bold uppercase tracking-wider">Enroll Face Profile</span>, enter your name, and click <span className="text-white font-bold uppercase tracking-wider">Capture & Register</span>.</li>
                 <li>Wait for the green success confirmation card (it will auto-close in 3s).</li>
-                <li>In <strong>Scan Mode</strong> (when enrollment is closed), look directly at the webcam inside the scanning circle.</li>
-                <li>The app will automatically match your face and display a green <strong>"Punch Success"</strong> card!</li>
+                <li>In <strong className="font-bold text-white uppercase tracking-wider">Scan Mode</strong> (when enrollment is closed), look directly at the webcam inside the scanning circle.</li>
+                <li>The app will automatically match your face and display a green <strong className="font-bold text-white uppercase tracking-wider">"Punch Success"</strong> card!</li>
               </ol>
             </div>
           </div>
