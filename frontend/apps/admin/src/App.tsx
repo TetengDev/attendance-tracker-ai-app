@@ -1044,6 +1044,22 @@ const devicesRoute = createRoute({
         }
       };
 
+      const handleDeleteDevice = async (deviceId: string) => {
+        if (!window.confirm("Are you sure you want to unregister and delete this device? This will immediately disconnect the device if it is active.")) {
+          return;
+        }
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/devices/${deviceId}`, {
+            method: "DELETE",
+            headers: { "x-admin-id": "14d75b41-d558-4a73-9369-93f32ef86a70" }
+          });
+          if (!res.ok) throw new Error("Failed to delete device");
+          await refetch();
+        } catch (err: any) {
+          alert(err.message || "Failed to delete device");
+        }
+      };
+
       return (
         <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
           <DeviceRegistrationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); refetch(); }} />
@@ -1128,7 +1144,7 @@ const devicesRoute = createRoute({
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
                         {d.token_display_prefix === 'unpaired' && (
                           <button 
                             onClick={() => handleShowCode(d.id)}
@@ -1138,6 +1154,12 @@ const devicesRoute = createRoute({
                             {isGeneratingCode === d.id ? "Generating..." : "Show Code"}
                           </button>
                         )}
+                        <button 
+                          onClick={() => handleDeleteDevice(d.id)}
+                          className="text-red-500 hover:text-red-700 font-medium text-sm"
+                        >
+                          Delete
+                        </button>
                       </td>
                     </tr>
                   ))}
