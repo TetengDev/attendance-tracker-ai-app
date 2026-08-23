@@ -1582,7 +1582,47 @@ async def test_timezone_business_date_isolation() -> None:
     await resolve(session, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
 
     records = _get_added_records(session)
-    assert len(records) == 1
     assert records[0].status == AttendanceStatus.ON_TIME
     assert records[0].business_date == date(2026, 8, 14)
+
+
+@pytest.mark.anyio
+async def test_grace_in_minutes_change_reclassifies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Changing grace_in_minutes causes subsequent resolves of the same event/expected inputs to change status."""
+    import backend.app.attendance.resolver as resolver_mod
+    from backend.app.attendance.resolver import resolve
+
+    expected = make_expected()
+    # Event occurs at 09:05 (5 minutes after start)
+    event = make_event(occurred_at=DAY_START + timedelta(minutes=5))
+
+    # 1. First run: grace_in_minutes = 0 -> event is after start + grace_in -> LATE
+    settings_0 = dict(DEFAULT_SETTINGS)
+    settings_0["attendance.grace_in_minutes"] = 0
+    async def mock_resolve_settings_0(db: Any, context: SettingContext) -> ResolvedSettings:
+        return ResolvedSettings(settings=settings_0, settings_version=1)
+
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", mock_resolve_settings_0)
+
+    session1 = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session1, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+    records1 = _get_added_records(session1)
+    assert len(records1) == 1
+    assert records1[0].status == AttendanceStatus.LATE
+    assert records1[0].late_minutes == 5
+
+    # 2. Second run: grace_in_minutes = 10 -> event is within start + grace_in -> ON_TIME
+    settings_10 = dict(DEFAULT_SETTINGS)
+    settings_10["attendance.grace_in_minutes"] = 10
+    async def mock_resolve_settings_10(db: Any, context: SettingContext) -> ResolvedSettings:
+        return ResolvedSettings(settings=settings_10, settings_version=1)
+
+    monkeypatch.setattr(resolver_mod, "resolve_db_settings", mock_resolve_settings_10)
+
+    session2 = MockSession(expected_rows=[expected], events=[event])
+    await resolve(session2, PERSON_ID, BUSINESS_DATE, as_of=AS_OF)
+    records2 = _get_added_records(session2)
+    assert len(records2) == 1
+    assert records2[0].status == AttendanceStatus.ON_TIME
+    assert records2[0].late_minutes is None
 
