@@ -50,3 +50,8 @@ pgdata/
 
 # Local logging
 logs/
+
+# Playwright
+playwright-report/
+test-results/
+node_modules
