@@ -1433,6 +1433,9 @@ export function App() {
           currentUrl={apiUrl}
           onSave={(url) => {
             let formatted = url.trim();
+            if (formatted && !/^https?:\/\//i.test(formatted)) {
+              formatted = `http://${formatted}`;
+            }
             if (formatted.endsWith("/")) {
               formatted = formatted.slice(0, -1);
             }
