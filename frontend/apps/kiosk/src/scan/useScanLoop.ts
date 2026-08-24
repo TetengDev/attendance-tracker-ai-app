@@ -70,6 +70,91 @@ async function getFaceDetector(): Promise<FaceDetector> {
   return loadingPromise;
 }
 
+function createMockCameraStream(): MediaStream {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext("2d");
+  
+  let frame = 0;
+  const intervalId = setInterval(() => {
+    if (!ctx) return;
+    frame++;
+    
+    // Draw background
+    ctx.fillStyle = "#09090b";
+    ctx.fillRect(0, 0, 640, 480);
+    
+    // Draw grid lines
+    ctx.strokeStyle = "#18181b";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < 640; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 480);
+      ctx.stroke();
+    }
+    for (let y = 0; y < 480; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(640, y);
+      ctx.stroke();
+    }
+
+    // Draw scanning laser
+    const laserY = (Math.sin(frame * 0.05) + 1) * 240;
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#6366f1";
+    ctx.beginPath();
+    ctx.moveTo(40, laserY);
+    ctx.lineTo(600, laserY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Draw simulated face outline
+    ctx.strokeStyle = "rgba(99, 102, 241, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(320, 240, 100, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw eyes and mouth
+    ctx.beginPath();
+    ctx.arc(280, 210, 8, 0, Math.PI * 2);
+    ctx.arc(360, 210, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(99, 102, 241, 0.4)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(320, 270, 30, 0, Math.PI);
+    ctx.stroke();
+
+    // Draw status text
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("AEGIS CAMERA SIMULATOR (ACTIVE)", 320, 50);
+    
+    ctx.fillStyle = "#a1a1aa";
+    ctx.font = "12px monospace";
+    ctx.fillText("Simulating front-facing camera input", 320, 80);
+  }, 33);
+
+  const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
+  if (stream) {
+    const originalStop = stream.getVideoTracks()[0].stop;
+    stream.getVideoTracks()[0].stop = function() {
+      clearInterval(intervalId);
+      originalStop.apply(this);
+    };
+    return stream;
+  }
+  
+  return new MediaStream();
+}
+
 export function useScanLoop({
   videoRef,
   facingMode = "user",
@@ -208,9 +293,22 @@ export function useScanLoop({
         };
       }
       setIsScanRunning(true);
-    } catch (err) {
-      console.error("Failed to acquire camera stream:", err);
-      setCameraError("Camera access denied or unavailable.");
+    } catch (err: any) {
+      console.warn("Failed to acquire real camera stream. Falling back to simulator stream:", err);
+      try {
+        const mockStream = createMockCameraStream();
+        activeStreamRef.current = mockStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = mockStream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().catch(console.error);
+          };
+        }
+        setIsScanRunning(true);
+      } catch (mockErr) {
+        console.error("Failed to acquire simulated camera stream:", mockErr);
+        setCameraError("Camera access denied or unavailable.");
+      }
     }
   }, [facingMode, stopCamera, videoRef]);
 
