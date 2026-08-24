@@ -1,0 +1,6 @@
+{
+  "appId": "org.aegis.attendance",
+  "appName": "Aegis Kiosk",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScanLoop } from "./scan/useScanLoop";
-import { apiBaseUrl } from "@attendance/api-client";
+import { apiBaseUrl as defaultApiBaseUrl } from "@attendance/api-client";
 import { enqueueOfflineScan, getOfflineScans, removeOfflineScan, getOfflineQueueDepth } from "./utils/offlineQueue";
 import type { FrameBurst, ServerMessage, Result, ErrorMessage, TokenRotation, SettingsPush } from "@attendance/protocol";
 
@@ -10,9 +10,31 @@ const SEED_DEVICE_TOKEN = "seed-device-token";
 const SEED_ADMIN_ID = "14d75b41-d558-4a73-9369-93f32ef86a70";
 
 // Browser Web Audio synthesizer helper for alerts
+let sharedAudioCtx: AudioContext | null = null;
+const getSharedAudioCtx = () => {
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  return sharedAudioCtx;
+};
+
+const unlockAudioContext = () => {
+  try {
+    const ctx = getSharedAudioCtx();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(e => console.warn("Failed to resume AudioContext:", e));
+    }
+  } catch (e) {
+    console.error("Audio Context unlock failed:", e);
+  }
+};
+
 const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = getSharedAudioCtx();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type;
@@ -28,8 +50,60 @@ const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) =>
   }
 };
 
+function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOpen: boolean; onClose: () => void; currentUrl: string; onSave: (url: string) => void }) {
+  const [url, setUrl] = useState(currentUrl);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Server Connection Settings</h2>
+          <button onClick={onClose} className="text-muted-color hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); onSave(url); onClose(); }} className="p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Backend API Server URL</label>
+              <input 
+                required 
+                type="text" 
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-mono" 
+                placeholder="e.g. http://192.168.1.100:8001" 
+              />
+              <p className="text-[9px] text-muted-color mt-2 uppercase tracking-wider leading-relaxed">
+                Enter your computer's local LAN IP address and port (e.g. port 8001) to connect the physical mobile device or simulator to the backend.
+              </p>
+            </div>
+          </div>
+          <div className="mt-8 flex justify-end gap-3 border-t border-hairline pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]">Cancel</button>
+            <button type="submit" className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20">
+              Save & Reconnect
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Dynamic API configuration
+  const [apiUrl, setApiUrl] = useState(() => {
+    return localStorage.getItem("aegis_api_url") || defaultApiBaseUrl;
+  });
+  const [isConnModalOpen, setIsConnModalOpen] = useState(false);
+  const apiBaseUrl = apiUrl;
   
   // App state
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
@@ -65,6 +139,39 @@ export function App() {
   const [relaxedGating, setRelaxedGating] = useState(true);
   const [kioskSettings, setKioskSettings] = useState<Record<string, any>>({});
   const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
+  const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
+
+  // iOS Safari specific visibility tracking to restart stalled camera feeds
+  useEffect(() => {
+    const handleVisibility = () => {
+      const hidden = document.visibilityState === "hidden";
+      setIsAppBackgrounded(hidden);
+      if (!hidden && videoRef.current && videoRef.current.srcObject) {
+        // iOS requires explicit play() call on user return to active tab
+        videoRef.current.play().catch(e => console.warn("Video stream play failed on foreground return:", e));
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  // Web Audio context gesture unlocking listener for iOS alerts
+  useEffect(() => {
+    const unlock = () => {
+      unlockAudioContext();
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("touchstart", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("click", unlock);
+    window.addEventListener("touchstart", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("touchstart", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   // Dynamically apply branding colors from server settings to CSS variables
   useEffect(() => {
@@ -97,6 +204,13 @@ export function App() {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollSuccess, setEnrollSuccess] = useState<string | null>(null);
   const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+
+  useEffect(() => {
+    if (kioskSettings["kiosk.camera_facing"]) {
+      setFacingMode(kioskSettings["kiosk.camera_facing"] as "user" | "environment");
+    }
+  }, [kioskSettings]);
 
   // WebSocket reference
   const wsRef = useRef<WebSocket | null>(null);
@@ -410,7 +524,8 @@ export function App() {
   const { isLoadingModel, isScanRunning, resetLockout, detectedBbox, reason, metrics } = useScanLoop({
     videoRef,
     isScanActive: activeScan && wsStatus === "connected" && !scanResult && !showEnroll,
-    facingMode: (kioskSettings["kiosk.camera_facing"] as "user" | "environment" | undefined) ?? "user",
+    isAppBackgrounded: isAppBackgrounded,
+    facingMode: facingMode,
     scanMode: (kioskSettings["kiosk.scan_mode"] as "continuous" | "tap_to_scan" | undefined) ?? "continuous",
     settings: scanSettings,
     onBurstCaptured: handleBurstCaptured,
@@ -726,73 +841,104 @@ export function App() {
 
   return (
     <main className="relative min-h-screen bg-canvas font-sans text-white antialiased overflow-hidden">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 border-b border-hairline shrink-0">
+      <header className="mx-6 mt-6 bg-surface-card/60 backdrop-blur-md border border-hairline rounded-2xl px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl shadow-black/30 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-3 w-5 items-stretch relative overflow-hidden select-none">
+          <div className="flex h-1.5 w-8 rounded-full overflow-hidden select-none">
             <div className="w-1/3 bg-m-blue-light" />
             <div className="w-1/3 bg-m-blue-dark" />
             <div className="w-1/3 bg-m-red" />
           </div>
-          <span className="font-bold tracking-widest text-sm uppercase">{(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Biometrics"}</span>
+          <span className="font-bold tracking-wider text-sm text-zinc-100 font-sans">{(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Biometrics"}</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           {/* Offline Queue Depth Badge */}
           {queueDepth > 0 && (
-            <div className="flex items-center gap-2 rounded-none bg-surface-soft text-amber-500 border border-hairline px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider animate-pulse">
+            <div className="flex items-center gap-2 rounded-full bg-amber-950/30 text-amber-400 border border-amber-800/40 px-3.5 py-1 text-xs font-semibold tracking-wide animate-pulse">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span>{queueDepth} Offline scan{queueDepth === 1 ? "" : "s"} queued</span>
             </div>
           )}
-
+ 
           {/* WS Status Indicator */}
-          <div className="flex items-center gap-2 rounded-none bg-surface-soft px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-hairline">
+          <div 
+            onClick={() => {
+              if (wsStatus === "disconnected" || !!(window as any).Capacitor) {
+                setIsConnModalOpen(true);
+              }
+            }}
+            className={`flex items-center gap-2 rounded-xl bg-surface-soft px-3.5 py-1.5 text-xs font-semibold tracking-wide border border-hairline text-zinc-300 ${wsStatus === "disconnected" || !!(window as any).Capacitor ? 'cursor-pointer hover:border-zinc-400 transition-colors' : ''}`}
+            title="Click to configure connection URL"
+          >
             {wsStatus === "connected" ? (
               <>
-                <span className="h-2 w-2 rounded-none bg-emerald-500" />
-                <span className="text-white">Connected</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                <span>Connected</span>
               </>
             ) : wsStatus === "connecting" ? (
               <>
-                <span className="h-2 w-2 rounded-none bg-amber-500 animate-pulse" />
-                <span className="text-white">Connecting</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                <span>Connecting</span>
               </>
             ) : (
               <>
-                <span className="h-2 w-2 rounded-none bg-red-500 animate-pulse" />
-                <span className="text-white">Disconnected</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+                <span>Disconnected</span>
               </>
             )}
           </div>
-
-          {/* Mode Badge + Toggle - always visible so users know current mode */}
-          <div className="flex items-center gap-2">
+ 
+          {/* Mode Badge + Toggle */}
+          <div className="flex items-center">
             <button
               onClick={() => {
                 const enteringEnroll = !showEnroll;
                 setShowEnroll(enteringEnroll);
                 setEnrollSuccess(null);
                 setEnrollError(null);
-                // When entering enrollment mode, pause scanning; when leaving, resume scanning
                 setActiveScan(!enteringEnroll);
               }}
-              className="rounded-none border border-white bg-transparent text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
+              className="rounded-xl border border-hairline bg-surface-soft text-zinc-300 hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-surface-elevated transition-all active:scale-[0.96]"
               title={showEnroll ? "Click to switch to Scan Mode" : "Click to switch to Registration Mode"}
             >
               {showEnroll ? "Registration Mode" : "Scan Mode"}
             </button>
           </div>
 
+          {/* Camera Facing mode toggle */}
+          <button
+            onClick={() => setFacingMode(prev => prev === "user" ? "environment" : "user")}
+            className="rounded-xl border border-hairline bg-surface-soft text-zinc-300 hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-surface-elevated transition-all active:scale-[0.96]"
+            title="Toggle Front/Back Camera"
+          >
+            Camera: {facingMode === "user" ? "Front" : "Back"}
+          </button>
+
+          {/* iOS Capacitor Mobile Admin Panel Launcher */}
+          {!!(window as any).Capacitor && (
+            <button
+              onClick={() => {
+                const serverUrl = apiBaseUrl || window.location.origin;
+                const adminUrl = serverUrl.replace(":8001", ":5174").replace("/api", "");
+                window.location.href = adminUrl;
+              }}
+              className="rounded-xl border border-m-blue-dark/50 bg-m-blue-dark/10 text-m-blue-light px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-m-blue-dark hover:text-white transition-all active:scale-[0.96]"
+              title="Launch Admin Console"
+            >
+              Admin Console
+            </button>
+          )}
+ 
           {wsStatus === "disconnected" && (
             <button
               onClick={fetchToken}
-              className="rounded-none border border-white bg-transparent text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
+              className="rounded-xl bg-primary hover:bg-primary/95 text-white px-4 py-1.5 text-xs font-bold tracking-wider hover:shadow-lg hover:shadow-primary/10 transition-all active:scale-[0.96]"
             >
               Connect Kiosk
             </button>
           )}
-
+ 
           {/* Explicit Start/Stop Scan control visible when connected */}
           {wsStatus === 'connected' && (
             <button
@@ -801,11 +947,10 @@ export function App() {
                   setActiveScan(false);
                 } else {
                   setActiveScan(true);
-                  // ensure not in enroll mode
                   setShowEnroll(false);
                 }
               }}
-              className="ml-2 rounded-none border border-white bg-transparent text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
+              className="rounded-xl border border-primary text-primary hover:bg-primary hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all active:scale-[0.96]"
             >
               {activeScan ? 'Stop Scanning' : 'Start Scanning'}
             </button>
@@ -816,7 +961,7 @@ export function App() {
       <section className={`mx-auto grid max-w-5xl gap-8 px-6 py-12 ${import.meta.env.DEV ? "md:grid-cols-3" : "md:grid-cols-1 justify-center max-w-2xl"}`}>
         {/* Left Side: Scan Feed and Centering Overlays */}
         <div className={import.meta.env.DEV ? "md:col-span-2 flex flex-col gap-4" : "flex flex-col gap-4"}>
-          <div className="relative aspect-[4/3] rounded-none overflow-hidden border border-hairline bg-black">
+          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-hairline bg-black shadow-xl shadow-black/40">
             {/* Live Camera Feed */}
             <video
               ref={videoRef}
@@ -828,14 +973,14 @@ export function App() {
 
             {/* Glowing Laser Scan Bar */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-m-red to-transparent opacity-85 shadow-[0_0_12px_rgba(226,39,24,0.8)] animate-scan-line pointer-events-none" />
+              <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-85 shadow-[0_0_12px_rgba(99,102,241,0.8)] animate-scan-line pointer-events-none" />
             )}
 
             {/* Face centering guide target */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="h-56 w-56 rounded-full border-2 border-dashed border-white/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
-                  <div className="h-48 w-48 rounded-full border border-white/10" />
+                <div className="h-60 w-60 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
+                  <div className="h-52 w-52 rounded-full border border-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.05)]" />
                 </div>
               </div>
             )}
@@ -851,7 +996,7 @@ export function App() {
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative h-16 w-16">
                     <div className="absolute inset-0 rounded-full border-4 border-white/10" />
-                    <div className="absolute inset-0 rounded-full border-4 border-white border-t-transparent animate-spin" />
+                    <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
                   </div>
                   <span className="text-white font-mono text-xs tracking-[0.2em] font-bold animate-pulse shadow-black drop-shadow-md">
                     PROCESSING BIOMETRICS
@@ -862,33 +1007,49 @@ export function App() {
 
             {/* Enrollment Guide Overlay */}
             {isScanRunning && showEnroll && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/30">
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/40">
                 {/* Face Silhouette Guide */}
-                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-white shadow-[0_0_15px_rgba(255,255,255,0.4)] flex items-center justify-center animate-[pulse_2s_infinite]">
-                  <div className="h-56 w-40 rounded-[100px] border border-white/20" />
+                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-primary shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center justify-center animate-[pulse_2s_infinite]">
+                  <div className="h-56 w-40 rounded-[100px] border border-primary/20" />
                 </div>
                 {/* Text guide */}
-                <div className="absolute bottom-6 bg-canvas border border-hairline rounded-none px-4 py-1.5 text-[10px] text-white font-bold tracking-widest uppercase shadow-lg">
-                  Position your face in the silhouette and click "Capture & Register"
+                <div className="absolute bottom-6 bg-surface-card border border-hairline rounded-xl px-4 py-2 text-xs text-white font-bold tracking-wide shadow-lg">
+                  Position your face and click "Capture & Register"
                 </div>
               </div>
             )}
 
             {/* Disconnected Overlay */}
             {wsStatus !== "connected" && !isLoadingModel && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/90 backdrop-blur-sm z-10">
-                <svg className="h-12 w-12 text-hairline mb-3 animate-[pulse_2s_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 8.464M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
-                </svg>
-                <p className="text-white text-xs font-bold tracking-widest uppercase mb-1">Kiosk Offline</p>
-                <p className="text-muted-color text-[10px] uppercase tracking-wider font-light">Click "Connect Kiosk" in the header to start scanning</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-md z-10 p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mb-4">
+                  <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 8.464M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
+                  </svg>
+                </div>
+                <p className="text-white text-sm font-bold tracking-wider uppercase mb-1">Kiosk Offline</p>
+                <p className="text-muted-color text-xs tracking-wide font-light mb-6">Set up the API connection or click connect to begin</p>
+                <div className="flex flex-col gap-2 w-full max-w-xs z-20">
+                  <button
+                    onClick={fetchToken}
+                    className="w-full bg-primary hover:bg-primary/90 text-white py-2.5 rounded-xl uppercase tracking-widest text-[10px] font-bold transition-all shadow-lg shadow-primary/10 active:scale-[0.96]"
+                  >
+                    Connect Kiosk
+                  </button>
+                  <button
+                    onClick={() => setIsConnModalOpen(true)}
+                    className="w-full bg-surface-soft text-zinc-300 border border-hairline py-2.5 rounded-xl uppercase tracking-widest text-[10px] font-bold hover:text-white hover:border-zinc-400 transition-all active:scale-[0.96]"
+                  >
+                    Server Settings
+                  </button>
+                </div>
               </div>
             )}
 
             {/* Scan Mode Active Indicator */}
             {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute top-4 left-4 bg-canvas border border-hairline rounded-none px-3 py-1 text-[9px] text-white font-bold tracking-widest uppercase z-10 flex items-center gap-1.5 shadow-lg shadow-black/80">
-                <span className="h-1.5 w-1.5 rounded-none bg-m-red animate-pulse" />
+              <div className="absolute top-4 left-4 bg-canvas/80 border border-hairline rounded-full px-3 py-1.5 text-[10px] text-white font-bold tracking-wide z-10 flex items-center gap-1.5 shadow-lg shadow-black/80 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
                 <span>Kiosk Scan Mode Active</span>
               </div>
             )}
@@ -902,20 +1063,20 @@ export function App() {
                   width: `${detectedBbox.w}%`,
                   height: `${detectedBbox.h}%`,
                 }}
-                className={`absolute border-2 rounded-none transition-all duration-75 pointer-events-none ${
+                className={`absolute border-2 rounded-xl transition-all duration-75 pointer-events-none ${
                   showEnroll 
                     ? "border-white shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
                     : reason 
                     ? "border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]" 
-                    : "border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                    : "border-primary shadow-[0_0_8px_rgba(99,102,241,0.4)]"
                 }`}
               >
-                <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded-none text-[9px] font-bold text-black uppercase tracking-wider whitespace-nowrap ${
+                <div className={`absolute -top-7 left-0 px-2.5 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-wider whitespace-nowrap shadow-md ${
                   showEnroll 
-                    ? "bg-white" 
+                    ? "bg-zinc-600" 
                     : reason 
                     ? "bg-amber-500" 
-                    : "bg-emerald-500"
+                    : "bg-primary"
                 }`}>
                   {showEnroll 
                     ? "Enrolling..." 
@@ -947,27 +1108,27 @@ export function App() {
             {/* Loading / Startup Overlay */}
             {isLoadingModel && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-sm z-10">
-                <div className="h-10 w-10 border-4 border-white/10 border-t-white rounded-none animate-spin mb-4" />
-                <p className="text-muted-color text-xs font-bold uppercase tracking-widest">Loading Face Engine WASM Models...</p>
+                <div className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
+                <p className="text-zinc-400 text-xs font-semibold tracking-wide">Loading Face Engine WASM Models...</p>
               </div>
             )}
  
             {/* Attendance Punch Result Notification Modal */}
             {scanResult && scanResult.person && (
               <div className="absolute inset-0 flex items-center justify-center bg-canvas/90 backdrop-blur-md z-20 animate-fade-in">
-                <div className="flex flex-col items-center text-center p-6 max-w-sm rounded-none bg-surface-card border border-hairline shadow-2xl animate-scale-up">
-                  <div className="h-20 w-20 rounded-none bg-emerald-950/40 border border-emerald-800 flex items-center justify-center mb-5 animate-pulse">
+                <div className="flex flex-col items-center text-center p-8 max-w-sm rounded-2xl bg-surface-card/90 border border-hairline shadow-2xl animate-scale-up backdrop-blur-md">
+                  <div className="h-20 w-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-5 animate-pulse">
                     <svg className="h-10 w-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold tracking-widest uppercase text-white mb-2">Punch Success</h3>
-                  <p className="text-white text-lg mb-1">{scanResult.person.display_name}</p>
-                  <p className="text-muted-color text-[10px] font-bold uppercase tracking-wider mb-4">
+                  <h3 className="text-lg font-bold tracking-wide text-white mb-2">Punch Success</h3>
+                  <p className="text-white text-base font-semibold mb-1">{scanResult.person.display_name}</p>
+                  <p className="text-zinc-400 text-[10px] font-semibold uppercase tracking-wider mb-4">
                     {scanResult.direction === "in" ? "CHECK-IN" : "CHECK-OUT"} • {new Date(scanResult.occurred_at).toLocaleTimeString()}
                   </p>
-                  <span className="text-[10px] text-white bg-surface-soft border border-hairline rounded-none px-3 py-1.5 uppercase font-bold tracking-widest">
-                    Attendance Logged Durably
+                  <span className="text-[10px] text-zinc-300 bg-surface-soft border border-hairline rounded-full px-3 py-1.5 uppercase font-semibold tracking-wide">
+                    Attendance Logged
                   </span>
                 </div>
               </div>
@@ -975,43 +1136,43 @@ export function App() {
  
             {/* Gating Error Notification */}
             {scanError && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-red-950/90 border border-red-800 backdrop-blur-md rounded-none px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
-                <span className="h-2 w-2 rounded-none bg-red-400 animate-pulse" />
-                <span className="text-red-200 text-xs font-bold uppercase tracking-wider">{scanError}</span>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-rose-950/95 border border-rose-800/40 backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-20 animate-scale-up">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
+                <span className="text-rose-200 text-xs font-semibold tracking-wide">{scanError}</span>
               </div>
             )}
  
             {/* Friendly Info Notification */}
             {scanInfo && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-canvas border border-hairline backdrop-blur-md rounded-none px-5 py-3.5 shadow-2xl z-20 animate-scale-up">
-                <span className="h-2 w-2 rounded-none bg-white animate-pulse" />
-                <span className="text-white text-xs font-bold uppercase tracking-wider">{scanInfo}</span>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-zinc-900/95 border border-hairline backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-20 animate-scale-up">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shadow-[0_0_6px_rgba(255,255,255,0.6)]" />
+                <span className="text-white text-xs font-semibold tracking-wide">{scanInfo}</span>
               </div>
             )}
           </div>
  
           {/* Real-time scanning ticker / Gating feedback */}
-          <div className="flex items-center gap-3.5 rounded-none border border-hairline bg-surface-soft px-5 py-3 text-xs text-muted-color font-bold uppercase tracking-wider">
-            <span className={`h-2.5 w-2.5 rounded-none ${wsStatus === "connected" && isScanRunning ? "bg-white animate-pulse" : "bg-hairline"}`} />
+          <div className="flex items-center gap-3.5 rounded-2xl border border-hairline bg-surface-soft px-5 py-3.5 text-xs text-zinc-400 font-semibold tracking-wide shadow-md">
+            <span className={`h-1.5 w-1.5 rounded-full ${wsStatus === "connected" && isScanRunning ? "bg-primary animate-pulse shadow-[0_0_6px_rgba(99,102,241,0.6)]" : "bg-hairline"}`} />
             <span>{gatingStatus}</span>
             {isScanRunning && wsStatus === "connected" && (
               <button
                 onClick={resetLockout}
-                className="ml-auto text-[10px] font-bold uppercase tracking-widest text-white border border-white hover:bg-white hover:text-black bg-transparent px-2.5 py-1 rounded-none transition-colors"
+                className="ml-auto text-[10px] font-semibold tracking-wide text-zinc-300 border border-hairline hover:border-zinc-400 bg-transparent px-2.5 py-1 rounded-xl transition-all active:scale-[0.96] hover:bg-surface-elevated"
               >
                 Reset Lockout
               </button>
             )}
           </div>
           {/* PIN / QR Code Fallback Card */}
-          <div className="rounded-none border border-hairline bg-surface-card p-6 shadow-lg">
+          <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-widest text-white">PIN / QR Code Fallback</h2>
-                  <span className="text-[9px] bg-surface-soft text-white border border-hairline px-2.5 py-0.5 rounded-none uppercase font-mono tracking-wider font-bold">Accessibility</span>
+                  <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2.5 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Accessibility</span>
                 </div>
                 
-                <p className="text-xs text-body-color font-light">
+                <p className="text-xs text-zinc-400 font-light">
                   Type your ID/PIN or position your QR code in front of the camera (simulated via text input).
                 </p>
  
@@ -1023,12 +1184,12 @@ export function App() {
                     value={pinValue}
                     onChange={(e) => setPinValue(e.target.value)}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="flex-1 rounded-none bg-surface-soft border border-hairline px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-0 transition-colors"
+                    className="flex-1 rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                   />
                   <button
                     type="submit"
                     disabled={isMatching || !pinValue.trim() || wsStatus !== "connected"}
-                    className="bg-transparent border border-white disabled:border-hairline disabled:text-muted-color text-white font-bold px-5 py-2.5 rounded-none hover:bg-white hover:text-black transition-all text-xs uppercase tracking-widest"
+                    className="bg-primary hover:bg-primary/90 text-white font-bold px-5 py-2.5 rounded-xl transition-all text-xs uppercase tracking-widest disabled:bg-surface-soft disabled:text-zinc-600 disabled:border-none disabled:shadow-none active:scale-[0.96]"
                   >
                     Check In
                   </button>
@@ -1042,7 +1203,7 @@ export function App() {
                       type="button"
                       onClick={() => handleKeypadPress(num.toString())}
                       disabled={isMatching || wsStatus !== "connected"}
-                      className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
+                      className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                     >
                       {num}
                     </button>
@@ -1051,7 +1212,7 @@ export function App() {
                     type="button"
                     onClick={handleKeypadClear}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-surface-soft hover:bg-surface-elevated text-m-red font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-rose-500 font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                   >
                     Clear
                   </button>
@@ -1059,7 +1220,7 @@ export function App() {
                     type="button"
                     onClick={() => handleKeypadPress("0")}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                   >
                     0
                   </button>
@@ -1067,7 +1228,7 @@ export function App() {
                     type="button"
                     onClick={handleKeypadBackspace}
                     disabled={isMatching || wsStatus !== "connected"}
-                    className="bg-surface-soft hover:bg-surface-elevated text-white font-bold py-3 rounded-none border border-hairline hover:border-white transition-all text-xs flex items-center justify-center select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm flex items-center justify-center select-none"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
@@ -1081,30 +1242,30 @@ export function App() {
         {/* Right Side: Setup instructions and Dev Tools */}
         {import.meta.env.DEV && (
           <div className="flex flex-col gap-6">
-            <div className="rounded-none border border-hairline bg-surface-card p-6 shadow-lg">
+            <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-white">Local Dev Tools</h2>
-                <span className="text-[9px] bg-surface-soft text-white border border-hairline px-2 py-0.5 rounded-none uppercase font-mono tracking-wider font-bold">Ready</span>
+                <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Ready</span>
               </div>
               
-              <p className="text-xs text-body-color mb-6 font-light">
+              <p className="text-xs text-zinc-400 mb-6 font-light">
                 Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
               </p>
  
               {/* Relax scan criteria toggle */}
-              <div className="flex items-center justify-between bg-surface-soft border border-hairline rounded-none px-4 py-3 mb-4 select-none">
+              <div className="flex items-center justify-between bg-surface-soft border border-hairline rounded-2xl px-4 py-3 mb-4 select-none">
                 <div className="flex flex-col gap-0.5 pr-2">
                   <span className="text-xs font-bold text-white uppercase tracking-wider">Relax Scan Criteria</span>
                   <span className="text-[9px] text-muted-color uppercase tracking-wider mt-0.5 font-light">Bypasses strict distance/lighting gates</span>
                 </div>
                 <button
                   onClick={() => setRelaxedGating(!relaxedGating)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-sm transition-colors duration-200 ${
-                    relaxedGating ? "bg-white" : "bg-hairline"
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                    relaxedGating ? "bg-primary" : "bg-zinc-700"
                   }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-sm bg-canvas transition-transform duration-200 ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
                       relaxedGating ? "translate-x-4.5" : "translate-x-0.5"
                     }`}
                   />
@@ -1117,7 +1278,7 @@ export function App() {
                   setEnrollSuccess(null);
                   setEnrollError(null);
                 }}
-                className="w-full rounded-none border border-hairline hover:border-white bg-surface-soft py-3 text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center gap-2 mb-4"
+                className="w-full rounded-xl border border-hairline hover:border-zinc-400 bg-surface-soft py-3 text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center gap-2 mb-4 active:scale-[0.97]"
               >
                 {showEnroll ? "Close Enrollment" : "Enroll Face Profile"}
               </button>
@@ -1135,18 +1296,18 @@ export function App() {
                       value={enrollName}
                       onChange={(e) => setEnrollName(e.target.value)}
                       disabled={isEnrolling}
-                      className="w-full rounded-none bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-0 transition-colors"
+                      className="w-full rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                     />
                   </div>
 
                   <button
                     onClick={enrollFace}
                     disabled={isEnrolling || !enrollName.trim()}
-                    className="w-full rounded-none bg-transparent border border-white disabled:border-hairline disabled:text-muted-color py-2.5 text-xs font-bold text-white hover:bg-white hover:text-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 rounded-xl disabled:bg-surface-soft disabled:text-zinc-600 disabled:shadow-none active:scale-[0.97]"
                   >
                     {isEnrolling ? (
                       <>
-                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-none animate-spin" />
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         Registering Biometrics...
                       </>
                     ) : (
@@ -1155,13 +1316,13 @@ export function App() {
                   </button>
 
                   {enrollSuccess && (
-                    <div className="rounded-none bg-emerald-950/40 border border-emerald-800 p-3 text-xs text-emerald-400 font-bold uppercase tracking-wider">
+                    <div className="rounded-xl bg-emerald-950/20 border border-emerald-800/40 p-3 text-xs text-emerald-400 font-semibold tracking-wide">
                       {enrollSuccess}
                     </div>
                   )}
 
                   {enrollError && (
-                    <div className="rounded-none bg-red-950/40 border border-red-800 p-3 text-xs text-red-400 font-bold uppercase tracking-wider">
+                    <div className="rounded-xl bg-rose-950/20 border border-rose-800/40 p-3 text-xs text-rose-400 font-semibold tracking-wide">
                       {enrollError}
                     </div>
                   )}
@@ -1177,24 +1338,25 @@ export function App() {
                   {people.length > 0 && (
                     <button
                       onClick={deleteAllPeople}
-                      className="text-[10px] text-m-red hover:underline font-bold uppercase tracking-wider transition-colors"
+                      className="text-[10px] text-m-red hover:text-red-400 font-bold uppercase tracking-wider transition-colors"
                     >
                       Delete All
                     </button>
                   )}
-                </div>                 {people.length === 0 ? (
+                </div>
+                {people.length === 0 ? (
                   <p className="text-[9px] text-muted-color uppercase tracking-wider font-light">No face profiles registered yet.</p>
                 ) : (
                   <div className="max-h-36 overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
                     {people.map((p) => (
                       <div
                         key={p.id}
-                        className="flex items-center justify-between bg-surface-soft border border-hairline rounded-none px-3 py-2 text-xs hover:border-white transition-colors"
+                        className="flex items-center justify-between bg-surface-soft border border-hairline rounded-xl px-3 py-2 text-xs hover:border-zinc-400 transition-colors"
                       >
                         <span className="font-bold truncate text-white uppercase text-[10px] tracking-wider">{p.display_name}</span>
                         <button
                           onClick={() => deletePerson(p.id, p.display_name)}
-                          className="text-m-red hover:text-red-500 transition-all p-1 rounded-none"
+                          className="text-m-red hover:text-red-400 transition-all p-1.5 rounded-lg hover:bg-surface-elevated"
                           title="Delete profile"
                         >
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1209,19 +1371,19 @@ export function App() {
             </div>
             
             {/* Real-time Logs Console */}
-            <div className="rounded-none border border-hairline bg-surface-card p-6 flex flex-col h-80">
+            <div className="rounded-2xl border border-hairline bg-surface-card p-6 flex flex-col h-80 shadow-xl shadow-black/10">
               <div className="flex justify-between items-center mb-3 border-b border-hairline pb-2">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-white">Live Connection Logs</h2>
                 <button
                   onClick={() => setLogs([])}
-                  className="text-[10px] text-muted-color hover:text-white bg-surface-soft px-2.5 py-1 rounded-none border border-hairline transition-all uppercase tracking-wider font-bold"
+                  className="text-[10px] text-zinc-400 hover:text-white bg-surface-soft px-3 py-1 rounded-xl border border-hairline transition-all uppercase tracking-wider font-bold active:scale-95"
                 >
                   Clear Logs
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto font-mono text-[9px] text-body-color space-y-1.5 p-3 rounded-none bg-surface-soft border border-hairline select-text scrollbar-thin">
+              <div className="flex-1 overflow-y-auto font-mono text-[9px] text-zinc-400 space-y-1.5 p-3 rounded-xl bg-surface-soft border border-hairline select-text scrollbar-thin">
                 {logs.length === 0 ? (
-                  <p className="text-muted-color italic uppercase">No logs recorded yet.</p>
+                  <p className="text-muted-color italic uppercase text-center py-4">No logs recorded yet.</p>
                 ) : (
                   logs.map((log, idx) => (
                     <div
@@ -1242,7 +1404,7 @@ export function App() {
             </div>
  
             {/* Quickstart Reference Box */}
-            <div className="rounded-none border border-hairline bg-surface-card p-6 space-y-4">
+            <div className="rounded-2xl border border-hairline bg-surface-card p-6 space-y-4 shadow-xl shadow-black/10">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-white border-b border-hairline pb-2">Step-by-step Test</h3>
               <ol className="list-decimal list-inside space-y-2.5 text-xs text-body-color font-light">
                 <li>Click <span className="text-white font-bold uppercase tracking-wider">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
@@ -1255,6 +1417,23 @@ export function App() {
           </div>
         )}
       </section>
-    </main>
+      <ConnectionSettingsModal
+          isOpen={isConnModalOpen}
+          onClose={() => setIsConnModalOpen(false)}
+          currentUrl={apiUrl}
+          onSave={(url) => {
+            let formatted = url.trim();
+            if (formatted.endsWith("/")) {
+              formatted = formatted.slice(0, -1);
+            }
+            localStorage.setItem("aegis_api_url", formatted);
+            setApiUrl(formatted);
+            logMessage(`Updated API URL to ${formatted}. Reconnecting...`, "info");
+            if (wsRef.current) {
+              wsRef.current.close();
+            }
+          }}
+        />
+      </main>
   );
 }

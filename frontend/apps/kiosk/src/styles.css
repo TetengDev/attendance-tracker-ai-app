@@ -1,24 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #000000;
-  --color-surface-soft: #0d0d0d;
-  --color-surface-card: #1a1a1a;
-  --color-surface-elevated: #262626;
-  --color-carbon-gray: #2b2b2b;
-  --color-hairline: #3c3c3c;
-  --color-hairline-strong: #262626;
+  --color-canvas: #09090b;
+  --color-surface-soft: #0f0f11;
+  --color-surface-card: #18181b;
+  --color-surface-elevated: #27272a;
+  --color-carbon-gray: #27272a;
+  --color-hairline: #2a2a2d;
+  --color-hairline-strong: #3f3f46;
   
-  --color-primary: #ffffff;
-  --color-m-blue-light: #0066b1;
-  --color-m-blue-dark: #1c69d4;
-  --color-m-red: #e22718;
-  --color-electric-blue: #0653b6;
+  --color-primary: #6366f1;
+  --color-m-blue-light: #818cf8;
+  --color-m-blue-dark: #4f46e5;
+  --color-m-red: #f43f5e;
+  --color-electric-blue: #6366f1;
   
   --color-on-dark: #ffffff;
-  --color-body-color: #bbbbbb;
-  --color-body-strong: #e6e6e6;
-  --color-muted-color: #7e7e7e;
+  --color-body-color: #d4d4d8;
+  --color-body-strong: #f4f4f5;
+  --color-muted-color: #71717a;
   
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
@@ -58,4 +58,28 @@
 
 @utility animate-camera-flash {
   animation: camera-flash 0.6s ease-out forwards;
+}
+
+html, body {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  background-color: var(--color-canvas);
+}
+
+button, input, select, textarea, [role="button"] {
+  touch-action: manipulation;
+}
+
+#root {
+  -webkit-user-select: none;
+  user-select: none;
 }

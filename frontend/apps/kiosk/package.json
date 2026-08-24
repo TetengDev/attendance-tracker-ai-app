@@ -5,12 +5,19 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open ios",
+    "build:mobile": "vite build && npx cap sync"
   },
   "dependencies": {
     "@attendance/api-client": "workspace:*",
     "@attendance/protocol": "workspace:*",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@mediapipe/tasks-vision": "^1.0.1"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0"
+  }
 }

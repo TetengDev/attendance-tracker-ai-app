@@ -17,7 +17,12 @@ const queryClient = new QueryClient();
 // Layout & Components
 // ----------------------
 
-function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navItems = [
     { to: "/", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
     { to: "/people", label: "People & Enrollment", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
@@ -28,67 +33,101 @@ function Sidebar() {
   ];
 
   return (
-    <div className="w-64 bg-canvas text-white flex flex-col h-screen border-r border-hairline no-print">
-      <div className="p-6 flex items-center gap-3">
-        <div className="h-8 w-8 bg-surface-card border border-hairline flex items-center justify-center relative overflow-hidden rounded-none">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red" />
-          <svg className="w-4 h-4 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <span className="font-bold tracking-widest text-sm uppercase">Aegis Admin</span>
-      </div>
-      
-      <div className="h-[4px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red w-full shrink-0" />
-      
-      <nav className="flex-1 px-4 py-6 space-y-2">
-        {navItems.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            className={item.isEmergency 
-              ? "flex items-center gap-3 px-3 py-2.5 rounded-none text-sm font-medium transition-all duration-200 text-rose-500 hover:bg-rose-950/20"
-              : "flex items-center gap-3 px-3 py-2.5 rounded-none text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-surface-card"
-            }
-            activeProps={{ 
-              className: item.isEmergency 
-                ? "bg-rose-950/30 text-rose-500 font-bold border-l-2 border-m-red pl-2" 
-                : "bg-surface-card text-white border-l-2 border-m-red pl-2 font-bold" 
-            }}
+    <>
+      {/* Mobile Drawer Backdrop */}
+      {isOpen && (
+        <div 
+          onClick={onClose} 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-fade-in"
+        />
+      )}
+      <div className={`w-64 bg-canvas text-white flex flex-col h-screen border-r border-hairline no-print fixed inset-y-0 left-0 z-50 md:static transition-transform duration-300 ${
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      }`}>
+        <div className="p-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 bg-surface-card border border-hairline flex items-center justify-center relative overflow-hidden rounded-xl">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red" />
+              <svg className="w-4 h-4 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <span className="font-bold tracking-wider text-sm text-zinc-100 font-sans">Aegis Admin</span>
+          </div>
+          <button 
+            onClick={onClose}
+            className="md:hidden text-muted-color hover:text-white"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              {item.label === "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
-              {item.label === "Settings" && <circle cx="12" cy="12" r="3" strokeWidth={1.5} />}
-              {item.label !== "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-            <span className="uppercase tracking-wider text-[11px] font-bold">{item.label}</span>
-          </Link>
-        ))}
-      </nav>
-
-      <div className="p-4 mt-auto">
-        <div className="bg-surface-soft border border-hairline rounded-none p-4">
-          <p className="text-[10px] text-muted-color mb-1 uppercase tracking-wider font-bold">API Endpoint</p>
-          <p className="text-[9px] font-mono text-body-strong break-all">{apiBaseUrl}</p>
+          </button>
+        </div>
+        
+        <div className="h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red w-full shrink-0 opacity-80" />
+        
+        <nav className="flex-1 px-4 py-6 space-y-1.5">
+          {navItems.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className={item.isEmergency 
+                ? "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-rose-400 hover:bg-rose-950/20"
+                : "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-zinc-400 hover:text-white hover:bg-surface-card hover:shadow-md"
+              }
+              activeProps={{ 
+                className: item.isEmergency 
+                  ? "bg-rose-950/30 text-rose-500 font-bold border-l-4 border-m-red pl-2.5 rounded-xl" 
+                  : "bg-surface-card text-white border-l-4 border-primary pl-2.5 font-bold rounded-xl shadow-md" 
+              }}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {item.label === "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
+                {item.label === "Settings" && <circle cx="12" cy="12" r="3" strokeWidth={1.5} />}
+                {item.label !== "Settings" && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />}
+              </svg>
+              <span className="uppercase tracking-wider text-[10px] font-bold">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+ 
+        <div className="p-4 mt-auto">
+          <div className="bg-surface-soft border border-hairline rounded-xl p-4 shadow-inner">
+            <p className="text-[10px] text-muted-color mb-1 uppercase tracking-wider font-bold">API Endpoint</p>
+            <p className="text-[9px] font-mono text-zinc-300 break-all">{apiBaseUrl}</p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 function AdminLayout() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen bg-canvas font-sans text-white">
-      <Sidebar />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-surface-soft border-b border-hairline flex items-center justify-between px-8 shrink-0 no-print">
-          <h2 className="text-xs font-bold text-white uppercase tracking-widest">Console Overview</h2>
+        <header className="h-16 bg-surface-soft border-b border-hairline flex items-center justify-between px-6 md:px-8 shrink-0 no-print">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden text-white hover:text-muted-color focus:outline-none"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h2 className="text-xs font-bold text-white uppercase tracking-widest">Console Overview</h2>
+          </div>
           <div className="flex items-center gap-4">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
             <span className="text-[10px] font-bold text-emerald-500 tracking-widest uppercase">System Healthy</span>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <Outlet />
         </main>
       </div>
@@ -124,16 +163,16 @@ const indexRoute = createRoute({
     return (
       <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="mb-8 border-b border-hairline pb-6">
-          <h1 className="text-4xl font-bold uppercase tracking-widest text-white">Dashboard</h1>
-          <p className="text-body-color text-sm font-light mt-1">Overview of attendance and biometric operations.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">Dashboard</h1>
+          <p className="text-zinc-400 text-sm font-light mt-1.5">Overview of attendance and biometric operations.</p>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center p-12">
-            <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin"></div>
+            <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
           </div>
         ) : isError ? (
-          <div className="p-12 text-center text-red-500 font-bold uppercase tracking-wider">Error loading dashboard metrics.</div>
+          <div className="p-12 text-center text-rose-500 font-semibold tracking-wide">Error loading dashboard metrics.</div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -142,14 +181,14 @@ const indexRoute = createRoute({
                 { label: "Registered Kiosks", value: metrics?.active_kiosks || 0, trend: "All online", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
                 { label: "Scans Today", value: metrics?.scans_today || 0, trend: "Today's logs", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
               ].map((stat, i) => (
-                <div key={i} className="bg-surface-card p-6 border border-hairline rounded-none transition-colors relative overflow-hidden group hover:border-white">
+                <div key={i} className="bg-surface-card p-6 border border-hairline rounded-2xl transition-all relative overflow-hidden group hover:border-zinc-400 hover:shadow-xl hover:shadow-black/20">
                   <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-m-blue-light via-m-blue-dark to-m-red opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-color">{stat.label}</p>
-                      <p className="text-4xl font-bold text-white mt-2 font-mono">{stat.value}</p>
+                      <p className="text-4xl font-extrabold text-white mt-2 font-mono tracking-tight">{stat.value}</p>
                     </div>
-                    <div className="p-3 bg-surface-soft text-white border border-hairline rounded-none">
+                    <div className="p-3 bg-surface-soft text-primary border border-hairline rounded-xl shadow-inner">
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={stat.icon} />
                       </svg>
@@ -160,7 +199,7 @@ const indexRoute = createRoute({
               ))}
             </div>
 
-            <div className="bg-surface-card border border-hairline p-8 rounded-none">
+            <div className="bg-surface-card border border-hairline p-8 rounded-2xl shadow-xl shadow-black/10">
               <h3 className="text-sm font-bold uppercase tracking-widest text-white mb-6">Recent Activity</h3>
               {!metrics?.recent_activity || metrics.recent_activity.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-color">
@@ -172,9 +211,9 @@ const indexRoute = createRoute({
               ) : (
                 <div className="space-y-4">
                   {metrics.recent_activity.map((activity: any) => (
-                    <div key={activity.id} className="flex items-center justify-between p-4 rounded-none border border-hairline bg-surface-soft hover:bg-surface-elevated transition-colors">
+                    <div key={activity.id} className="flex items-center justify-between p-4 rounded-xl border border-hairline bg-surface-soft hover:bg-surface-elevated hover:border-zinc-400 transition-all">
                       <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-none ${activity.outcome === 'accepted' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800' : 'bg-red-950/40 text-red-400 border border-red-800'}`}>
+                        <div className={`p-2.5 rounded-full ${activity.outcome === 'accepted' ? 'bg-emerald-950/20 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/20 text-rose-400 border border-rose-800/40'}`}>
                           {activity.outcome === 'accepted' ? (
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                           ) : (
@@ -242,36 +281,36 @@ function EnrollPersonModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; on
   }
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
-        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">Enroll New Person</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Enroll New Person</h2>
+          <button onClick={onClose} className="text-muted-color hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6">
-          {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          {error && <div className="mb-4 text-xs text-rose-400 bg-rose-950/20 p-3 rounded-xl border border-rose-800/40 font-semibold tracking-wide">{error}</div>}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Full Name</label>
-              <input required name="display_name" type="text" className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none" placeholder="e.g. Jane Doe" />
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Full Name</label>
+              <input required name="display_name" type="text" className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium" placeholder="e.g. Jane Doe" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Role / Kind</label>
-              <select required name="kind" className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none">
-                <option value="staff">Staff / Employee</option>
-                <option value="student">Student</option>
-                <option value="visitor">Visitor</option>
-                <option value="contractor">Contractor</option>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Role / Kind</label>
+              <select required name="kind" className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-bold uppercase tracking-wider">
+                <option value="staff" className="bg-canvas text-white">Staff / Employee</option>
+                <option value="student" className="bg-canvas text-white">Student</option>
+                <option value="visitor" className="bg-canvas text-white">Visitor</option>
+                <option value="contractor" className="bg-canvas text-white">Contractor</option>
               </select>
             </div>
           </div>
-          <div className="mt-8 flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="bg-cyan-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-sm shadow-cyan-600/20">
+          <div className="mt-8 flex justify-end gap-3 border-t border-hairline pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20 disabled:opacity-50">
               {isSubmitting ? "Creating..." : "Create Profile"}
             </button>
           </div>
@@ -343,79 +382,79 @@ function EditPersonModal({ person, isOpen, onClose, onSuccess }: { person: any; 
   }
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
-        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">Edit Person Profile</h2>
-          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Edit Person Profile</h2>
+          <button type="button" onClick={onClose} className="text-muted-color hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6">
-          {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          {error && <div className="mb-4 text-xs text-rose-400 bg-rose-950/20 p-3 rounded-xl border border-rose-800/40 font-semibold tracking-wide">{error}</div>}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Display Name</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Display Name</label>
               <input 
                 required 
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 type="text" 
-                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800" 
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium" 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Preferred Name</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Preferred Name</label>
               <input 
                 value={preferredName}
                 onChange={(e) => setPreferredName(e.target.value)}
                 type="text" 
-                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800" 
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium" 
                 placeholder="e.g. John"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">External ID</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">External ID</label>
               <input 
                 value={externalId}
                 onChange={(e) => setExternalId(e.target.value)}
                 type="text" 
-                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800 font-mono text-sm" 
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-mono" 
                 placeholder="e.g. EMP-1049"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Role / Kind</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Role / Kind</label>
               <select 
                 required 
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
-                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2.5 px-3 border outline-none text-zinc-800"
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-bold uppercase tracking-wider"
               >
-                <option value="staff">Staff / Employee</option>
-                <option value="student">Student</option>
-                <option value="visitor">Visitor</option>
-                <option value="contractor">Contractor</option>
+                <option value="staff" className="bg-canvas text-white">Staff / Employee</option>
+                <option value="student" className="bg-canvas text-white">Student</option>
+                <option value="visitor" className="bg-canvas text-white">Visitor</option>
+                <option value="contractor" className="bg-canvas text-white">Contractor</option>
               </select>
             </div>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-3 pt-2">
               <input 
                 id="edit_is_active"
                 type="checkbox" 
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
-                className="h-4 w-4 rounded border-zinc-300 text-cyan-600 focus:ring-cyan-500"
+                className="h-4 w-4 rounded border border-hairline bg-surface-soft text-primary focus:ring-0 focus:ring-offset-0 cursor-pointer"
               />
-              <label htmlFor="edit_is_active" className="text-sm font-semibold text-zinc-700 select-none">
+              <label htmlFor="edit_is_active" className="text-xs font-bold uppercase tracking-wider text-muted-color select-none cursor-pointer">
                 Active status in the system
               </label>
             </div>
           </div>
-          <div className="mt-8 flex justify-end gap-3 border-t border-zinc-100 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="bg-cyan-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-sm shadow-cyan-600/20">
+          <div className="mt-8 flex justify-end gap-3 border-t border-hairline pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20 disabled:opacity-50">
               {isSubmitting ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -457,25 +496,25 @@ function DeletePersonModal({ person, isOpen, onClose, onSuccess }: { person: any
   }
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-md overflow-hidden animate-scale-up">
-        <div className="p-6 text-center">
-          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mb-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md overflow-hidden animate-scale-up text-white p-6 shadow-2xl shadow-black/80">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full border border-m-red/20 bg-red-950/20 text-m-red mb-4">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h3 className="text-lg font-bold text-zinc-900 mb-2">Delete Profile</h3>
-          <p className="text-sm text-zinc-500 mb-6">
-            Are you sure you want to delete <span className="font-semibold text-zinc-950">{person.display_name}</span>? 
+          <h3 className="text-sm font-bold uppercase tracking-widest text-white mb-2">Delete Profile</h3>
+          <p className="text-xs text-zinc-400 tracking-wide leading-relaxed mb-6">
+            Are you sure you want to delete <strong className="text-white font-bold">{person.display_name}</strong>? 
             This action is permanent and will delete all associated biometric templates and attendance records.
           </p>
-          {error && <div className="mb-4 text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
-          <div className="flex justify-center gap-3">
+          {error && <div className="mb-4 text-xs text-rose-400 bg-rose-950/20 p-3 rounded-xl border border-rose-800/40 font-semibold tracking-wide">{error}</div>}
+          <div className="flex justify-center gap-3 border-t border-hairline pt-4">
             <button 
               type="button" 
               onClick={onClose} 
-              className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 border border-zinc-200 rounded-xl"
+              className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]"
             >
               Cancel
             </button>
@@ -483,7 +522,7 @@ function DeletePersonModal({ person, isOpen, onClose, onSuccess }: { person: any
               type="button" 
               onClick={handleDelete}
               disabled={isSubmitting}
-              className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-xl text-sm font-medium disabled:opacity-50 transition-colors shadow-sm shadow-rose-600/20"
+              className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-rose-600/20 disabled:opacity-50"
             >
               {isSubmitting ? "Deleting..." : "Delete Profile"}
             </button>
@@ -603,28 +642,28 @@ function CaptureFaceModal({ person, isOpen, onClose, onSuccess }: { person: any;
   }
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-full max-w-lg overflow-hidden animate-scale-up">
-        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">Enroll Face: {person.display_name}</h2>
-          <button onClick={handleClose} className="text-zinc-400 hover:text-zinc-600">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-lg overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Enroll Face: {person.display_name}</h2>
+          <button onClick={handleClose} className="text-muted-color hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <div className="p-6">
-          {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
-          <div className="rounded-2xl overflow-hidden bg-zinc-100 relative aspect-video flex items-center justify-center">
+          {error && <div className="mb-4 text-xs text-rose-400 bg-rose-950/20 p-3 rounded-xl border border-rose-800/40 font-semibold tracking-wide">{error}</div>}
+          <div className="rounded-xl overflow-hidden bg-black relative aspect-video flex items-center justify-center border border-hairline">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <div className="absolute inset-0 border-4 border-cyan-500/30 rounded-2xl pointer-events-none"></div>
+            <div className="absolute inset-0 border-2 border-dashed border-primary/45 rounded-xl pointer-events-none"></div>
           </div>
-          <p className="mt-4 text-sm text-zinc-500 text-center">
+          <p className="mt-4 text-[10px] text-muted-color text-center uppercase tracking-wider">
             Ensure the face is well-lit and clearly visible in the frame.
           </p>
-          <div className="mt-6 flex justify-end gap-3">
-            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">Cancel</button>
-            <button type="button" onClick={handleCapture} disabled={isCapturing} className="bg-cyan-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-sm shadow-cyan-600/20">
+          <div className="mt-6 flex justify-end gap-3 border-t border-hairline pt-4">
+            <button type="button" onClick={handleClose} className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]">Cancel</button>
+            <button type="button" onClick={handleCapture} disabled={isCapturing} className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20 disabled:opacity-50">
               {isCapturing ? "Processing..." : "Capture & Save"}
             </button>
           </div>
@@ -690,55 +729,55 @@ function OverrideModal({ isOpen, onClose, onSuccess, row }: { isOpen: boolean; o
   };
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl border border-zinc-200 w-full max-w-md shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <h3 className="text-lg font-bold text-zinc-900 mb-2">Override Attendance</h3>
-        <p className="text-xs text-zinc-500 mb-6">
-          Manually override status for <strong className="text-zinc-800">{row.name}</strong> on <strong className="text-zinc-800">{row.business_date}</strong>.
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md shadow-2xl p-6 overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-white mb-2">Override Attendance</h3>
+        <p className="text-[10px] text-muted-color mb-6 uppercase tracking-wider leading-relaxed">
+          Manually override status for <strong className="text-white">{row.name}</strong> on <strong className="text-white">{row.business_date}</strong>.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Status</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Status</label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-zinc-50 border border-zinc-200/80 rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+              className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-bold uppercase tracking-wider"
             >
-              <option value="present">Present</option>
-              <option value="late">Late</option>
-              <option value="absent">Absent</option>
-              <option value="excused">Excused</option>
-              <option value="holiday">Holiday</option>
-              <option value="pending">Pending</option>
+              <option value="present" className="bg-canvas text-white">Present</option>
+              <option value="late" className="bg-canvas text-white">Late</option>
+              <option value="absent" className="bg-canvas text-white">Absent</option>
+              <option value="excused" className="bg-canvas text-white">Excused</option>
+              <option value="holiday" className="bg-canvas text-white">Holiday</option>
+              <option value="pending" className="bg-canvas text-white">Pending</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Reason</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Reason</label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Reason for manual modification..."
               rows={3}
-              className="w-full bg-zinc-50 border border-zinc-200/80 rounded-xl px-4 py-2.5 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+              className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium resize-none"
             />
           </div>
 
-          {error && <div className="text-red-500 text-xs font-medium bg-red-50 border border-red-100 p-2.5 rounded-xl">{error}</div>}
+          {error && <div className="text-rose-400 text-xs font-semibold tracking-wide bg-rose-950/20 border border-rose-800/40 p-2.5 rounded-xl">{error}</div>}
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-100">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-hairline">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-zinc-500 hover:text-zinc-800 transition-colors"
+              className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-xl text-sm tracking-wider uppercase transition-colors shadow-sm disabled:opacity-50"
+              className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20 disabled:opacity-50"
             >
               {isSubmitting ? "Saving..." : "Apply Override"}
             </button>
@@ -793,28 +832,28 @@ const peopleRoute = createRoute({
           onSuccess={() => { setDeletePerson(null); refetch(); }} 
         />
         
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 border-b border-hairline pb-6">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">People & Enrollment</h1>
-            <p className="text-zinc-500 mt-1">Manage users, view profiles, and handle biometric enrollment.</p>
+            <h1 className="text-4xl font-bold uppercase tracking-widest text-white">People & Enrollment</h1>
+            <p className="text-body-color text-sm font-light mt-1">Manage users, view profiles, and handle biometric enrollment.</p>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20">
+          <button onClick={() => setIsModalOpen(true)} className="bg-transparent text-white border border-white px-4 py-2 rounded-none hover:bg-white hover:text-black transition-colors uppercase tracking-widest text-xs font-bold">
             + Enroll Person
           </button>
         </div>
         
-        <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+        <div className="bg-surface-card border border-hairline rounded-none overflow-x-auto">
           {isLoading ? (
             <div className="p-12 flex justify-center">
-              <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+              <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin"></div>
             </div>
           ) : isError ? (
-            <div className="p-12 text-center text-red-500 font-medium">Error loading people.</div>
+            <div className="p-12 text-center text-red-500 font-bold uppercase tracking-wider">Error loading people.</div>
           ) : people?.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500">No people found in the database.</div>
+            <div className="p-12 text-center text-muted-color uppercase text-xs font-bold tracking-wider">No people found in the database.</div>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
+              <thead className="bg-surface-soft border-b border-hairline text-muted-color font-bold uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="px-6 py-4">Name</th>
                   <th className="px-6 py-4">Kind</th>
@@ -822,45 +861,45 @@ const peopleRoute = createRoute({
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-hairline">
                 {people?.map((p) => (
-                  <tr key={p.id} className="hover:bg-zinc-50/50 transition-colors">
+                  <tr key={p.id} className="hover:bg-surface-elevated transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-zinc-900">{p.display_name}</div>
-                      <div className="text-xs text-zinc-500 font-mono mt-0.5">{p.id}</div>
+                      <div className="font-bold text-white uppercase text-xs tracking-wider">{p.display_name}</div>
+                      <div className="text-[10px] text-muted-color tracking-wider font-mono mt-0.5">{p.id}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2 py-1 rounded text-xs uppercase tracking-wider font-semibold">
+                      <span className="bg-surface-soft text-body-strong border border-hairline px-2 py-0.5 rounded-none text-[10px] uppercase tracking-wider font-bold">
                         {p.kind}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       {p.is_active ? (
-                        <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold uppercase tracking-wider">
-                          <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full"></span> Active
+                        <span className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                          <span className="h-1.5 w-1.5 bg-emerald-500 rounded-none"></span> Active
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-                          <span className="h-1.5 w-1.5 bg-zinc-300 rounded-full"></span> Inactive
+                        <span className="flex items-center gap-1.5 text-zinc-500 text-xs font-bold uppercase tracking-wider">
+                          <span className="h-1.5 w-1.5 bg-hairline rounded-none"></span> Inactive
                         </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3.5">
-                        <button type="button" onClick={() => setCapturePerson(p)} className="text-cyan-600 hover:text-cyan-700 font-medium text-xs flex items-center gap-1">
+                      <div className="flex items-center justify-end gap-4">
+                        <button type="button" onClick={() => setCapturePerson(p)} className="text-white hover:underline uppercase tracking-wider text-[10px] font-bold flex items-center gap-1">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
                           Capture Face
                         </button>
-                        <button type="button" onClick={() => setEditPerson(p)} className="text-zinc-600 hover:text-zinc-900 font-medium text-xs flex items-center gap-1">
+                        <button type="button" onClick={() => setEditPerson(p)} className="text-muted-color hover:text-white uppercase tracking-wider text-[10px] font-bold flex items-center gap-1">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                           Edit
                         </button>
-                        <button type="button" onClick={() => setDeletePerson(p)} className="text-rose-600 hover:text-rose-700 font-medium text-xs flex items-center gap-1">
+                        <button type="button" onClick={() => setDeletePerson(p)} className="text-m-red hover:underline uppercase tracking-wider text-[10px] font-bold flex items-center gap-1">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
@@ -1195,11 +1234,11 @@ function SettingControl({ setting }: { setting: any }) {
     return (
       <div className="flex items-center justify-between py-3">
         <div>
-          <p className="text-sm font-medium text-zinc-800 capitalize">{keyLabel}</p>
-          {setting.note && <p className="text-xs text-zinc-400">{setting.note}</p>}
+          <p className="text-xs font-bold text-white uppercase tracking-wider">{keyLabel}</p>
+          {setting.note && <p className="text-[10px] text-muted-color font-light mt-0.5">{setting.note}</p>}
         </div>
-        <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${setting.value ? 'bg-cyan-500' : 'bg-zinc-300'}`}>
-          <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${setting.value ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+        <div className={`w-9 h-5 rounded-sm relative cursor-pointer transition-colors ${setting.value ? 'bg-white' : 'bg-hairline'}`}>
+          <div className={`absolute top-0.5 w-4 h-4 bg-canvas rounded-sm transition-transform ${setting.value ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
         </div>
       </div>
     );
@@ -1209,10 +1248,10 @@ function SettingControl({ setting }: { setting: any }) {
     return (
       <div className="flex items-center justify-between py-3">
         <div>
-          <p className="text-sm font-medium text-zinc-800 capitalize">{keyLabel}</p>
-          {setting.note && <p className="text-xs text-zinc-400">{setting.note}</p>}
+          <p className="text-xs font-bold text-white uppercase tracking-wider">{keyLabel}</p>
+          {setting.note && <p className="text-[10px] text-muted-color font-light mt-0.5">{setting.note}</p>}
         </div>
-        <select disabled className="text-sm bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-zinc-700 outline-none" defaultValue={setting.value}>
+        <select disabled className="text-xs bg-surface-soft border border-hairline rounded-none px-3 py-1.5 text-white outline-none" defaultValue={setting.value}>
           {setting.enum.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       </div>
@@ -1223,20 +1262,20 @@ function SettingControl({ setting }: { setting: any }) {
     return (
       <div className="flex items-center justify-between py-3">
         <div className="flex-1 mr-6">
-          <p className="text-sm font-medium text-zinc-800 capitalize">{keyLabel}</p>
+          <p className="text-xs font-bold text-white uppercase tracking-wider">{keyLabel}</p>
           <div className="flex items-center gap-2 mt-1">
-            {setting.min != null && <span className="text-[10px] text-zinc-400">{setting.min}</span>}
-            <div className="flex-1 h-1.5 bg-zinc-200 rounded-full relative">
+            {setting.min != null && <span className="text-[9px] text-muted-color font-mono">{setting.min}</span>}
+            <div className="flex-1 h-1 bg-hairline rounded-none relative">
               <div
-                className="absolute h-1.5 bg-cyan-500 rounded-full"
+                className="absolute h-1 bg-white rounded-none"
                 style={{ width: setting.min != null && setting.max != null ? `${((setting.value - setting.min) / (setting.max - setting.min)) * 100}%` : '50%' }}
               />
             </div>
-            {setting.max != null && <span className="text-[10px] text-zinc-400">{setting.max}</span>}
+            {setting.max != null && <span className="text-[9px] text-muted-color font-mono">{setting.max}</span>}
           </div>
-          {setting.note && <p className="text-xs text-zinc-400 mt-0.5">{setting.note}</p>}
+          {setting.note && <p className="text-[10px] text-muted-color font-light mt-0.5">{setting.note}</p>}
         </div>
-        <span className="text-sm font-mono font-semibold text-zinc-700 bg-zinc-100 px-2.5 py-1 rounded-lg min-w-[60px] text-center">{setting.value}</span>
+        <span className="text-xs font-mono font-bold text-white bg-surface-soft px-2.5 py-1 rounded-none border border-hairline min-w-[60px] text-center">{setting.value}</span>
       </div>
     );
   }
@@ -1245,17 +1284,17 @@ function SettingControl({ setting }: { setting: any }) {
   return (
     <div className="flex items-center justify-between py-3">
       <div>
-        <p className="text-sm font-medium text-zinc-800 capitalize">{keyLabel}</p>
-        {setting.note && <p className="text-xs text-zinc-400">{setting.note}</p>}
-        {setting.format && <span className="text-[10px] text-zinc-400 font-mono">{setting.format}</span>}
+        <p className="text-xs font-bold text-white uppercase tracking-wider">{keyLabel}</p>
+        {setting.note && <p className="text-[10px] text-muted-color font-light mt-0.5">{setting.note}</p>}
+        {setting.format && <span className="text-[9px] text-muted-color font-mono">{setting.format}</span>}
       </div>
       {setting.format === "hex" ? (
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md border border-zinc-200 shadow-sm" style={{ backgroundColor: setting.value || '#ccc' }} />
-          <span className="text-sm font-mono text-zinc-600">{setting.value || '—'}</span>
+          <div className="w-6 h-6 rounded-none border border-hairline" style={{ backgroundColor: setting.value || '#ccc' }} />
+          <span className="text-xs font-mono text-body-strong">{setting.value || '—'}</span>
         </div>
       ) : (
-        <span className="text-sm text-zinc-600 font-mono bg-zinc-50 px-3 py-1 rounded-lg border border-zinc-200 max-w-[200px] truncate">{setting.value || '—'}</span>
+        <span className="text-xs text-body-strong font-mono bg-surface-soft px-3 py-1 rounded-none border border-hairline max-w-[200px] truncate">{setting.value || '—'}</span>
       )}
     </div>
   );
@@ -1294,52 +1333,52 @@ const settingsRoute = createRoute({
     }
 
     const categoryOrder = ["face", "liveness", "scan", "session", "kiosk", "branding", "attendance", "privacy", "retention"];
-
+ 
     return (
       <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Settings</h1>
-          <p className="text-zinc-500 mt-1">Configure global application preferences. Changes require a backend restart.</p>
+        <div className="mb-8 border-b border-hairline pb-6">
+          <h1 className="text-4xl font-bold uppercase tracking-widest text-white">Settings</h1>
+          <p className="text-body-color text-sm font-light mt-1">Configure global application preferences. Changes require a backend restart.</p>
         </div>
-
+ 
         {isLoading ? (
           <div className="flex justify-center p-12">
-            <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+            <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin"></div>
           </div>
         ) : isError ? (
-          <div className="p-12 text-center text-red-500 font-medium">Error loading settings.</div>
+          <div className="p-12 text-center text-red-500 font-bold uppercase tracking-wider">Error loading settings.</div>
         ) : (
           <div className="space-y-4">
             {categoryOrder.filter(cat => grouped[cat]).map(cat => {
               const meta = CATEGORY_META[cat] || { label: cat, icon: "", description: "" };
               const isExpanded = expandedCategories.has(cat);
               return (
-                <div key={cat} className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                <div key={cat} className="bg-surface-card rounded-none border border-hairline shadow-sm overflow-hidden">
                   <button
                     onClick={() => toggleCategory(cat)}
-                    className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50/50 transition-colors"
+                    className="w-full px-6 py-5 flex items-center justify-between hover:bg-surface-elevated transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="p-2.5 bg-cyan-50 text-cyan-600 rounded-xl">
+                      <div className="p-2 bg-surface-soft text-white border border-hairline rounded-none">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={meta.icon} />
                         </svg>
                       </div>
                       <div className="text-left">
-                        <h3 className="font-semibold text-zinc-900">{meta.label}</h3>
-                        <p className="text-xs text-zinc-500 mt-0.5">{meta.description}</p>
+                        <h3 className="font-bold text-white uppercase tracking-wider text-sm">{meta.label}</h3>
+                        <p className="text-[11px] text-muted-color font-light mt-0.5">{meta.description}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{grouped[cat]?.length || 0}</span>
-                      <svg className={`w-5 h-5 text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <span className="text-[10px] font-bold text-white bg-surface-soft border border-hairline px-2 py-0.5 rounded-none uppercase tracking-wider">{grouped[cat]?.length || 0}</span>
+                      <svg className={`w-5 h-5 text-muted-color transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
                   </button>
                   {isExpanded && (
-                    <div className="px-6 pb-5 border-t border-zinc-100">
-                      <div className="divide-y divide-zinc-100">
+                    <div className="px-6 pb-5 border-t border-hairline">
+                      <div className="divide-y divide-hairline">
                         {grouped[cat]?.map((s: any) => <SettingControl key={s.key} setting={s} />)}
                       </div>
                     </div>
@@ -1382,12 +1421,12 @@ function formatCell(val: any, header: string) {
   if (typeof val === "boolean") return val ? "Yes" : "No";
   if (header === "status" && typeof val === "string") {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider
-        ${val === "on_time" || val === "complete" || val === "Active" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : ""}
-        ${val === "late" ? "bg-amber-100 text-amber-800 border border-amber-200" : ""}
-        ${val === "absent" || val === "Offline" ? "bg-rose-100 text-rose-800 border border-rose-200" : ""}
-        ${val === "excused" || val === "holiday" ? "bg-zinc-100 text-zinc-800 border border-zinc-200" : ""}
-        ${val === "present_unscheduled" ? "bg-blue-100 text-blue-800 border border-blue-200" : ""}
+      <span className={`inline-flex items-center px-2.5 py-1.5 rounded-none text-[10px] font-bold uppercase tracking-wider border
+        ${val === "on_time" || val === "complete" || val === "Active" ? "bg-emerald-950/40 text-emerald-400 border-emerald-800" : ""}
+        ${val === "late" ? "bg-amber-950/40 text-amber-400 border-amber-800" : ""}
+        ${val === "absent" || val === "Offline" ? "bg-red-950/40 text-m-red border-red-950" : ""}
+        ${val === "excused" || val === "holiday" ? "bg-surface-soft text-body-strong border-hairline" : ""}
+        ${val === "present_unscheduled" ? "bg-surface-soft text-white border-hairline" : ""}
       `}>
         {val.replace("_", " ")}
       </span>
@@ -1571,33 +1610,33 @@ const reportsRoute = createRoute({
 
     return (
       <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Reports & Export</h1>
-          <p className="text-zinc-500 mt-1">Generate dynamic registers, sheets, and analytics exports.</p>
+        <div className="mb-8 border-b border-hairline pb-6">
+          <h1 className="text-4xl font-bold uppercase tracking-widest text-white">Reports & Export</h1>
+          <p className="text-body-color text-sm font-light mt-1">Generate dynamic registers, sheets, and analytics exports.</p>
         </div>
-
+ 
         {asyncBanner && (
-          <div className="mb-6 bg-cyan-50 border border-cyan-200 text-cyan-800 p-4 rounded-2xl flex items-center justify-between shadow-sm animate-in slide-in-from-top-2 duration-300">
+          <div className="mb-6 bg-surface-soft border border-hairline text-white p-4 rounded-none flex items-center justify-between shadow-sm animate-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-3">
-              <span className="h-2 w-2 rounded-full bg-cyan-500 animate-ping shrink-0" />
+              <span className="h-2 w-2 rounded-none bg-white animate-ping shrink-0" />
               <div>
-                <p className="text-sm font-semibold">{asyncBanner.message}</p>
-                <p className="text-xs text-cyan-600 mt-0.5">Job ID: {asyncBanner.jobId}</p>
+                <p className="text-xs font-bold uppercase tracking-widest">{asyncBanner.message}</p>
+                <p className="text-[10px] text-muted-color mt-0.5 font-mono">Job ID: {asyncBanner.jobId}</p>
               </div>
             </div>
-            <button onClick={() => setAsyncBanner(null)} className="text-cyan-600 hover:text-cyan-800 font-medium text-sm">Dismiss</button>
+            <button onClick={() => setAsyncBanner(null)} className="text-white hover:underline font-bold text-xs uppercase tracking-wider">Dismiss</button>
           </div>
         )}
-
+ 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Filters card */}
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-zinc-900 mb-4">Report Type</h3>
+            <div className="bg-surface-card border border-hairline p-6 rounded-none shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-white mb-4 border-b border-hairline pb-2">Report Type</h3>
               <select
                 value={reportType}
                 onChange={(e) => { setReportType(e.target.value); setPersonId(""); }}
-                className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 py-2.5 px-3 border outline-none bg-zinc-50 font-medium text-sm text-zinc-800"
+                className="w-full rounded-none bg-surface-soft border border-hairline py-2.5 px-3 outline-none text-xs text-white uppercase tracking-wider font-bold"
               >
                 <option value="daily_register">Daily Register</option>
                 <option value="timesheet">Timesheet</option>
@@ -1611,39 +1650,39 @@ const reportsRoute = createRoute({
                 <option value="exception_report">Exception Report</option>
                 <option value="device_health">Device Health Status</option>
               </select>
-
-              <h3 className="text-base font-semibold text-zinc-900 mt-6 mb-4">Filters</h3>
+ 
+              <h3 className="text-xs font-bold uppercase tracking-widest text-white mt-6 mb-4 border-b border-hairline pb-2">Filters</h3>
               <div className="space-y-4">
                 {reportType !== "muster_roll" && reportType !== "device_health" && (
                   <>
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Date From</label>
+                      <label className="block text-[10px] font-bold text-white uppercase tracking-wider mb-1">Date From</label>
                       <input
                         type="date"
                         value={dateFrom}
                         onChange={(e) => setDateFrom(e.target.value)}
-                        className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                        className="w-full rounded-none bg-surface-soft border border-hairline py-2 px-3 outline-none text-xs text-white uppercase tracking-wider"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Date To</label>
+                      <label className="block text-[10px] font-bold text-white uppercase tracking-wider mb-1">Date To</label>
                       <input
                         type="date"
                         value={dateTo}
                         onChange={(e) => setDateTo(e.target.value)}
-                        className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                        className="w-full rounded-none bg-surface-soft border border-hairline py-2 px-3 outline-none text-xs text-white uppercase tracking-wider"
                       />
                     </div>
                   </>
                 )}
-
+ 
                 {reportType !== "muster_roll" && reportType !== "device_health" && (
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Group Scope</label>
+                    <label className="block text-[10px] font-bold text-white uppercase tracking-wider mb-1">Group Scope</label>
                     <select
                       value={groupId}
                       onChange={(e) => setGroupId(e.target.value)}
-                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                      className="w-full rounded-none bg-surface-soft border border-hairline py-2 px-3 outline-none text-xs text-white uppercase tracking-wider"
                     >
                       <option value="">All Groups</option>
                       {groups?.map((g) => (
@@ -1652,14 +1691,14 @@ const reportsRoute = createRoute({
                     </select>
                   </div>
                 )}
-
+ 
                 {reportType === "timesheet" && (
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Filter Person</label>
+                    <label className="block text-[10px] font-bold text-white uppercase tracking-wider mb-1">Filter Person</label>
                     <select
                       value={personId}
                       onChange={(e) => setPersonId(e.target.value)}
-                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                      className="w-full rounded-none bg-surface-soft border border-hairline py-2 px-3 outline-none text-xs text-white uppercase tracking-wider"
                     >
                       <option value="">All People</option>
                       {people?.map((p) => (
@@ -1668,59 +1707,59 @@ const reportsRoute = createRoute({
                     </select>
                   </div>
                 )}
-
+ 
                 {reportType === "truancy" && (
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Min Absences Threshold</label>
+                    <label className="block text-[10px] font-bold text-white uppercase tracking-wider mb-1">Min Absences Threshold</label>
                     <input
                       type="number"
                       min={1}
                       max={50}
                       value={minAbsences}
                       onChange={(e) => setMinAbsences(Number(e.target.value))}
-                      className="w-full rounded-xl border-zinc-200 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 bg-zinc-50 py-2 px-3 border outline-none text-sm"
+                      className="w-full rounded-none bg-surface-soft border border-hairline py-2 px-3 outline-none text-xs text-white font-mono"
                     />
                   </div>
                 )}
               </div>
             </div>
-
-            <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm space-y-3">
-              <h3 className="text-base font-semibold text-zinc-900 mb-2">Export Document</h3>
+ 
+            <div className="bg-surface-card border border-hairline p-6 rounded-none shadow-sm space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-white mb-2 border-b border-hairline pb-2">Export Document</h3>
               
               <button
                 disabled={!!isExporting}
                 onClick={() => handleExport("csv")}
-                className="w-full flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white disabled:bg-zinc-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-zinc-900/10"
+                className="w-full flex items-center justify-center gap-2 bg-transparent hover:bg-white border border-white text-white hover:text-black py-3 rounded-none text-xs font-bold uppercase tracking-widest transition-all"
               >
                 {isExporting === "csv" ? (
-                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-none animate-spin" />
                 ) : (
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 )}
                 Export CSV Format
               </button>
-
+ 
               <button
                 disabled={!!isExporting}
                 onClick={() => handleExport("xlsx")}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-emerald-600/10"
+                className="w-full flex items-center justify-center gap-2 bg-transparent hover:bg-emerald-500 border border-emerald-500 text-emerald-400 hover:text-white py-3 rounded-none text-xs font-bold uppercase tracking-widest transition-all"
               >
                 {isExporting === "xlsx" ? (
-                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-none animate-spin" />
                 ) : (
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 )}
                 Export Excel Spreadsheet
               </button>
-
+ 
               <button
                 disabled={!!isExporting}
                 onClick={() => handleExport("pdf")}
-                className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white disabled:bg-rose-300 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-rose-600/10"
+                className="w-full flex items-center justify-center gap-2 bg-transparent hover:bg-m-red border border-m-red text-m-red hover:text-white py-3 rounded-none text-xs font-bold uppercase tracking-widest transition-all"
               >
                 {isExporting === "pdf" ? (
-                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-none animate-spin" />
                 ) : (
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 )}
@@ -1728,70 +1767,70 @@ const reportsRoute = createRoute({
               </button>
             </div>
           </div>
-
+ 
           {/* Main output panel */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col h-[650px]">
-              <div className="flex border-b border-zinc-200 bg-zinc-50/50 p-2 shrink-0">
+            <div className="bg-surface-card border border-hairline rounded-none flex flex-col h-[650px] overflow-hidden">
+              <div className="flex border-b border-hairline bg-surface-soft p-1 shrink-0">
                 <button
                   onClick={() => setActiveTab("preview")}
-                  className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === "preview" ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-800"}`}
+                  className={`flex-1 py-2.5 px-4 rounded-none text-xs uppercase tracking-widest font-bold transition-all duration-200 ${activeTab === "preview" ? "bg-canvas text-white border border-hairline" : "text-muted-color hover:text-white hover:bg-surface-elevated"}`}
                 >
                   Report Live Preview
                 </button>
                 <button
                   onClick={() => setActiveTab("jobs")}
-                  className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${activeTab === "jobs" ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-800"}`}
+                  className={`flex-1 py-2.5 px-4 rounded-none text-xs uppercase tracking-widest font-bold transition-all duration-200 flex items-center justify-center gap-2 ${activeTab === "jobs" ? "bg-canvas text-white border border-hairline" : "text-muted-color hover:text-white hover:bg-surface-elevated"}`}
                 >
                   Background Exports List
                   {jobs && jobs.some(j => j.status === "pending") && (
-                    <span className="h-2 w-2 rounded-full bg-cyan-500 animate-ping" />
+                    <span className="h-2 w-2 rounded-none bg-white animate-ping" />
                   )}
                 </button>
               </div>
-
+ 
               <div className="flex-1 overflow-auto">
                 {activeTab === "preview" ? (
                   isPreviewLoading ? (
-                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
-                      <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mb-4" />
-                      <p className="text-sm font-medium">Running query and rendering preview...</p>
+                    <div className="flex flex-col items-center justify-center h-full text-muted-color">
+                      <div className="h-8 w-8 border-4 border-white/10 border-t-white rounded-none animate-spin mb-4" />
+                      <p className="text-xs uppercase tracking-wider font-bold">Running query and rendering preview...</p>
                     </div>
                   ) : isPreviewError ? (
-                    <div className="flex flex-col items-center justify-center h-full text-red-500">
-                      <svg className="w-12 h-12 mb-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                      <p className="font-semibold">Error querying report preview data.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-m-red">
+                      <svg className="w-12 h-12 mb-4 text-m-red" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                      <p className="text-xs uppercase tracking-widest font-bold">Error querying report preview data.</p>
                     </div>
                   ) : !previewData || previewData.rows.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
-                      <svg className="w-12 h-12 mb-4 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      <p className="font-semibold">No records match filters.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-muted-color">
+                      <svg className="w-12 h-12 mb-4 text-hairline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <p className="text-xs uppercase tracking-widest font-bold">No records match filters.</p>
                     </div>
                   ) : (
-                    <div className="w-full">
-                      <table className="w-full border-collapse text-left text-xs text-zinc-700">
-                        <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider">
+                    <div className="w-full overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-xs text-white">
+                        <thead className="bg-surface-soft border-b border-hairline sticky top-0 font-bold text-muted-color uppercase tracking-wider text-[10px]">
                           <tr>
                             {previewData.headers.map((h: string) => (
-                              <th key={h} className="px-6 py-4 border-r border-zinc-200/50">{h.replace("_", " ")}</th>
+                              <th key={h} className="px-6 py-4 border-r border-hairline">{h.replace("_", " ")}</th>
                             ))}
                             {(reportType === "daily_register" || reportType === "timesheet") && (
                               <th className="px-6 py-4 text-right">Actions</th>
                             )}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-200">
+                        <tbody className="divide-y divide-hairline">
                           {previewData.rows.map((row: any, rIdx: number) => (
-                            <tr key={rIdx} className="hover:bg-zinc-50 transition-colors">
+                            <tr key={rIdx} className="hover:bg-surface-elevated transition-colors">
                               {previewData.headers.map((h: string) => (
-                                <td key={h} className="px-6 py-3.5 max-w-[200px] truncate border-r border-zinc-100/50">{formatCell(row[h], h)}</td>
+                                <td key={h} className="px-6 py-3.5 max-w-[200px] truncate border-r border-hairline">{formatCell(row[h], h)}</td>
                               ))}
                               {(reportType === "daily_register" || reportType === "timesheet") && (
                                 <td className="px-6 py-3.5 text-right font-medium whitespace-nowrap">
                                   {row.override_id ? (
                                     <button
                                       onClick={() => handleRemoveOverride(row.override_id)}
-                                      className="text-rose-600 hover:text-rose-700 mr-3"
+                                      className="text-m-red hover:underline mr-4 uppercase tracking-wider text-[10px] font-bold"
                                     >
                                       Remove Override
                                     </button>
@@ -1801,7 +1840,7 @@ const reportsRoute = createRoute({
                                       setOverrideRow(row);
                                       setIsOverrideModalOpen(true);
                                     }}
-                                    className="text-cyan-600 hover:text-cyan-700"
+                                    className="text-white hover:underline uppercase tracking-wider text-[10px] font-bold"
                                   >
                                     {row.override_id ? "Edit" : "Override"}
                                   </button>
@@ -1816,14 +1855,14 @@ const reportsRoute = createRoute({
                 ) : (
                   /* Background jobs list */
                   !jobs || jobs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-zinc-400">
-                      <svg className="w-12 h-12 mb-4 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7v12m0 0l-4-4m4 4l4-4m0 6V4" /></svg>
-                      <p className="font-semibold">No background export jobs found.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-muted-color">
+                      <svg className="w-12 h-12 mb-4 text-hairline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7v12m0 0l-4-4m4 4l4-4m0 6V4" /></svg>
+                      <p className="text-xs uppercase tracking-widest font-bold">No background export jobs found.</p>
                     </div>
                   ) : (
-                    <div className="w-full">
-                      <table className="w-full border-collapse text-left text-xs text-zinc-700">
-                        <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider">
+                    <div className="w-full overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-xs text-white">
+                        <thead className="bg-surface-soft border-b border-hairline sticky top-0 font-bold text-muted-color uppercase tracking-wider text-[10px]">
                           <tr>
                             <th className="px-6 py-4">Report Type</th>
                             <th className="px-6 py-4">Format</th>
@@ -1833,36 +1872,36 @@ const reportsRoute = createRoute({
                             <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-200">
+                        <tbody className="divide-y divide-hairline">
                           {jobs.map((job) => (
-                            <tr key={job.id} className="hover:bg-zinc-50 transition-colors">
-                              <td className="px-6 py-4 font-medium text-zinc-950 capitalize">{job.report_type.replace("_", " ")}</td>
-                              <td className="px-6 py-4 uppercase font-bold text-[10px] text-zinc-500">{job.format}</td>
+                            <tr key={job.id} className="hover:bg-surface-elevated transition-colors">
+                              <td className="px-6 py-4 font-bold text-white uppercase tracking-wider text-xs">{job.report_type.replace("_", " ")}</td>
+                              <td className="px-6 py-4 uppercase font-bold text-[10px] text-muted-color">{job.format}</td>
                               <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wider capitalize
-                                  ${job.status === "completed" ? "bg-emerald-100 text-emerald-800" : ""}
-                                  ${job.status === "pending" ? "bg-cyan-100 text-cyan-800 animate-pulse" : ""}
-                                  ${job.status === "failed" ? "bg-rose-100 text-rose-800" : ""}
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-none text-[10px] font-bold tracking-wider capitalize border
+                                  ${job.status === "completed" ? "bg-emerald-950/40 text-emerald-400 border-emerald-800" : ""}
+                                  ${job.status === "pending" ? "bg-cyan-950/40 text-cyan-400 border-cyan-800 animate-pulse" : ""}
+                                  ${job.status === "failed" ? "bg-red-950/40 text-m-red border-red-955" : ""}
                                 `}>
                                   {job.status}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 font-medium font-mono">{job.row_count !== null ? job.row_count.toLocaleString() : "—"}</td>
-                              <td className="px-6 py-4 text-zinc-500">{new Date(job.created_at).toLocaleString()}</td>
+                              <td className="px-6 py-4 font-bold font-mono text-white">{job.row_count !== null ? job.row_count.toLocaleString() : "—"}</td>
+                              <td className="px-6 py-4 text-muted-color text-xs">{new Date(job.created_at).toLocaleString()}</td>
                               <td className="px-6 py-4 text-right">
                                 {job.status === "completed" && (
                                   <button
                                     onClick={() => handleDownloadJob(job.id, job.format, job.report_type)}
-                                    className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs tracking-wider uppercase transition-colors"
+                                    className="bg-transparent hover:bg-white border border-white text-white hover:text-black font-bold py-1.5 px-3 rounded-none text-[10px] tracking-widest uppercase transition-colors"
                                   >
                                     Download
                                   </button>
                                 )}
                                 {job.status === "pending" && (
-                                  <div className="inline-flex h-5 w-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+                                  <div className="inline-flex h-5 w-5 border-2 border-white/20 border-t-white rounded-none animate-spin" />
                                 )}
                                 {job.status === "failed" && (
-                                  <span className="text-red-500 font-medium text-xs max-w-[120px] truncate block ml-auto" title={job.error_message || "Unknown error"}>
+                                  <span className="text-m-red font-bold text-xs max-w-[120px] truncate block ml-auto" title={job.error_message || "Unknown error"}>
                                     {job.error_message || "Failed"}
                                   </span>
                                 )}
@@ -1959,40 +1998,40 @@ const musterRoute = createRoute({
             h1, h2 { color: black !important; }
           }
         `}} />
-
-        <div className="flex items-center justify-between no-print">
+ 
+        <div className="flex items-center justify-between no-print border-b border-hairline pb-6">
           <div className="flex items-center gap-3">
             <span className="flex h-3 w-3 relative">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isCached ? "bg-amber-400" : "bg-emerald-400"}`}></span>
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${isCached ? "bg-amber-500" : "bg-emerald-500"}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-none opacity-75 ${isCached ? "bg-amber-500" : "bg-emerald-500"}`}></span>
+              <span className={`relative inline-flex rounded-none h-3 w-3 ${isCached ? "bg-amber-500" : "bg-emerald-500"}`}></span>
             </span>
-            <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Emergency Muster / Fire Roll</h1>
+            <h1 className="text-4xl font-bold text-white uppercase tracking-widest">Emergency Muster / Fire Roll</h1>
           </div>
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 px-5 rounded-xl text-sm transition-all duration-200 shadow-lg shadow-rose-600/10 active:scale-95"
+            className="flex items-center gap-2 bg-transparent hover:bg-m-red border border-m-red text-m-red hover:text-white font-bold py-2.5 px-5 rounded-none text-xs uppercase tracking-widest transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
             Print Roster
           </button>
         </div>
-
-        <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+ 
+        <div className={`p-4 rounded-none border flex items-center justify-between ${
           isCached 
-            ? "bg-amber-50 border-amber-200 text-amber-800" 
-            : "bg-emerald-50 border-emerald-200 text-emerald-800"
+            ? "bg-amber-950/40 border-amber-800 text-amber-400" 
+            : "bg-emerald-950/40 border-emerald-800 text-emerald-400"
         }`}>
           <div className="flex items-center gap-3">
             {isCached ? (
-              <svg className="w-6 h-6 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              <svg className="w-6 h-6 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             ) : (
-              <svg className="w-6 h-6 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <svg className="w-6 h-6 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             )}
             <div>
-              <p className="font-bold text-sm">
+              <p className="font-bold text-xs uppercase tracking-wider">
                 {isCached ? "API UNREACHABLE - Showing Cached Roster" : "Live Evacuation Roster"}
               </p>
-              <p className="text-xs opacity-90">
+              <p className="text-[10px] opacity-90 uppercase tracking-wider font-light mt-0.5">
                 {isCached 
                   ? `Showing the last successfully retrieved copy from ${cacheAgeStr}`
                   : "Roster matches real-time server records."}
@@ -2000,14 +2039,14 @@ const musterRoute = createRoute({
             </div>
           </div>
           <div className="text-right shrink-0">
-            <span className="text-2xl font-black">{displayRows.length}</span>
-            <span className="text-xs uppercase font-bold tracking-wider block opacity-75">Present Inside</span>
+            <span className="text-3xl font-black font-mono text-white block">{displayRows.length}</span>
+            <span className="text-[9px] uppercase font-bold tracking-widest block text-muted-color mt-0.5">Present Inside</span>
           </div>
         </div>
-
-        <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-          <table className="w-full border-collapse text-left text-xs text-zinc-700">
-            <thead className="bg-zinc-50 border-b border-zinc-200 sticky top-0 font-semibold text-zinc-800 uppercase tracking-wider no-print">
+ 
+        <div className="bg-surface-card border border-hairline rounded-none overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs text-white">
+            <thead className="bg-surface-soft border-b border-hairline sticky top-0 font-bold text-muted-color uppercase tracking-wider text-[10px] no-print">
               <tr>
                 <th className="px-6 py-4">Name</th>
                 <th className="px-6 py-4">External ID</th>
@@ -2017,22 +2056,22 @@ const musterRoute = createRoute({
                 <th className="px-6 py-4">Checked In At</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200">
+            <tbody className="divide-y divide-hairline">
               {displayRows.map((row: any, idx: number) => (
-                <tr key={idx} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-6 py-3.5 font-semibold text-zinc-950">{row.name}</td>
-                  <td className="px-6 py-3.5 font-mono">{row.external_id || "—"}</td>
-                  <td className="px-6 py-3.5">{row.group_name || "—"}</td>
-                  <td className="px-6 py-3.5">{row.location_name || "—"}</td>
-                  <td className="px-6 py-3.5 font-mono">{row.device_name || "—"}</td>
-                  <td className="px-6 py-3.5 font-mono">
+                <tr key={idx} className="hover:bg-surface-elevated transition-colors">
+                  <td className="px-6 py-3.5 font-bold text-white uppercase text-xs tracking-wider">{row.name}</td>
+                  <td className="px-6 py-3.5 font-mono text-xs">{row.external_id || "—"}</td>
+                  <td className="px-6 py-3.5 text-xs">{row.group_name || "—"}</td>
+                  <td className="px-6 py-3.5 text-xs">{row.location_name || "—"}</td>
+                  <td className="px-6 py-3.5 font-mono text-xs">{row.device_name || "—"}</td>
+                  <td className="px-6 py-3.5 font-mono text-xs">
                     {row.checked_in_at ? new Date(row.checked_in_at).toLocaleTimeString() : "—"}
                   </td>
                 </tr>
               ))}
               {displayRows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-zinc-400 font-medium text-sm">
+                  <td colSpan={6} className="text-center py-10 text-muted-color uppercase text-xs font-bold tracking-wider">
                     No individuals are currently marked as present inside.
                   </td>
                 </tr>
