@@ -142,7 +142,11 @@ function createMockCameraStream(): MediaStream {
     ctx.fillText("Simulating front-facing camera input", 320, 80);
   }, 33);
 
-  const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
+  const stream = (canvas as any).captureStream 
+    ? (canvas as any).captureStream(30) 
+    : (canvas as any).webkitCaptureStream 
+      ? (canvas as any).webkitCaptureStream(30) 
+      : null;
   if (stream) {
     const originalStop = stream.getVideoTracks()[0].stop;
     stream.getVideoTracks()[0].stop = function() {

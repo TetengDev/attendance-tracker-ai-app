@@ -1193,12 +1193,12 @@ export function App() {
                     placeholder="Enter your PIN or Scan QR Code..."
                     value={pinValue}
                     onChange={(e) => setPinValue(e.target.value)}
-                    disabled={isMatching || wsStatus !== "connected"}
+                    disabled={isMatching}
                     className="flex-1 rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                   />
                   <button
                     type="submit"
-                    disabled={isMatching || !pinValue.trim() || wsStatus !== "connected"}
+                    disabled={isMatching || !pinValue.trim()}
                     className="bg-primary hover:bg-primary/90 text-white font-bold px-5 py-2.5 rounded-xl transition-all text-xs uppercase tracking-widest disabled:bg-surface-soft disabled:text-zinc-600 disabled:border-none disabled:shadow-none active:scale-[0.96]"
                   >
                     Check In
@@ -1212,7 +1212,7 @@ export function App() {
                       key={num}
                       type="button"
                       onClick={() => handleKeypadPress(num.toString())}
-                      disabled={isMatching || wsStatus !== "connected"}
+                      disabled={isMatching}
                       className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                     >
                       {num}
@@ -1221,7 +1221,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={handleKeypadClear}
-                    disabled={isMatching || wsStatus !== "connected"}
+                    disabled={isMatching}
                     className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-rose-500 font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                   >
                     Clear
@@ -1229,7 +1229,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => handleKeypadPress("0")}
-                    disabled={isMatching || wsStatus !== "connected"}
+                    disabled={isMatching}
                     className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
                   >
                     0
@@ -1237,7 +1237,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={handleKeypadBackspace}
-                    disabled={isMatching || wsStatus !== "connected"}
+                    disabled={isMatching}
                     className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm flex items-center justify-center select-none"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
