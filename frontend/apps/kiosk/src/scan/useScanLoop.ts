@@ -194,8 +194,6 @@ export function useScanLoop({
     const constraints: MediaStreamConstraints = {
       video: {
         facingMode: facingMode,
-        width: { ideal: 640 },
-        height: { ideal: 480 },
       },
       audio: false,
     };
