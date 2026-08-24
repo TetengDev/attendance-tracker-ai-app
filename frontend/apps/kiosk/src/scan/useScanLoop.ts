@@ -70,7 +70,7 @@ async function getFaceDetector(): Promise<FaceDetector> {
   return loadingPromise;
 }
 
-function createMockCameraStream(): MediaStream {
+function createMockCameraStream(onIntervalStarted: (id: any) => void): MediaStream {
   const canvas = document.createElement("canvas");
   canvas.width = 640;
   canvas.height = 480;
@@ -142,21 +142,15 @@ function createMockCameraStream(): MediaStream {
     ctx.fillText("Simulating front-facing camera input", 320, 80);
   }, 33);
 
+  onIntervalStarted(intervalId);
+
   const stream = (canvas as any).captureStream 
     ? (canvas as any).captureStream(30) 
     : (canvas as any).webkitCaptureStream 
       ? (canvas as any).webkitCaptureStream(30) 
       : null;
-  if (stream) {
-    const originalStop = stream.getVideoTracks()[0].stop;
-    stream.getVideoTracks()[0].stop = function() {
-      clearInterval(intervalId);
-      originalStop.apply(this);
-    };
-    return stream;
-  }
   
-  return new MediaStream();
+  return stream || new MediaStream();
 }
 
 export function useScanLoop({
@@ -213,6 +207,7 @@ export function useScanLoop({
   const activeStreamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<FaceDetector | null>(null);
   const requestRef = useRef<number | null>(null);
+  const mockIntervalRef = useRef<number | null>(null);
 
   // Offscreen canvases
   const canvas320Ref = useRef<HTMLCanvasElement | null>(null);
@@ -264,6 +259,10 @@ export function useScanLoop({
   const stopCamera = useCallback(() => {
     stabilityQueueRef.current = []; // Clear queue on stream stop
     setDetectedBbox(null);
+    if (mockIntervalRef.current !== null) {
+      clearInterval(mockIntervalRef.current);
+      mockIntervalRef.current = null;
+    }
     if (activeStreamRef.current) {
       activeStreamRef.current.getTracks().forEach((track) => track.stop());
       activeStreamRef.current = null;
@@ -300,7 +299,10 @@ export function useScanLoop({
     } catch (err: any) {
       console.warn("Failed to acquire real camera stream. Falling back to simulator stream:", err);
       try {
-        const mockStream = createMockCameraStream();
+        const mockStream = createMockCameraStream((id) => {
+          if (mockIntervalRef.current !== null) clearInterval(mockIntervalRef.current);
+          mockIntervalRef.current = id;
+        });
         activeStreamRef.current = mockStream;
         if (videoRef.current) {
           videoRef.current.srcObject = mockStream;
