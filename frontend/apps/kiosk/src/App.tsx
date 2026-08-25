@@ -840,7 +840,7 @@ export function App() {
   };
 
   return (
-    <main className="relative min-h-screen bg-canvas font-sans text-white antialiased overflow-y-auto">
+    <main className="relative min-h-screen bg-canvas font-sans text-white antialiased">
       <header className="mx-6 mt-6 bg-surface-card/60 backdrop-blur-md border border-hairline rounded-2xl px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl shadow-black/30 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex h-1.5 w-8 rounded-full overflow-hidden select-none">
