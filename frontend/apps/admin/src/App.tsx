@@ -1188,15 +1188,13 @@ const devicesRoute = createRoute({
                         )}
                       </td>
                       <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
-                        {d.token_display_prefix === 'unpaired' && (
-                          <button 
-                            onClick={() => handleShowCode(d.id)}
-                            disabled={isGeneratingCode === d.id}
-                            className="text-white hover:underline disabled:text-hairline uppercase tracking-wider text-[10px] font-bold"
-                          >
-                            {isGeneratingCode === d.id ? "Generating..." : "Show Code"}
-                          </button>
-                        )}
+                        <button 
+                          onClick={() => handleShowCode(d.id)}
+                          disabled={isGeneratingCode === d.id}
+                          className="text-white hover:underline disabled:text-hairline uppercase tracking-wider text-[10px] font-bold"
+                        >
+                          {isGeneratingCode === d.id ? "Generating..." : d.token_display_prefix === 'unpaired' ? "Show Code" : "Re-pair"}
+                        </button>
                         <button 
                           onClick={() => handleDeleteDevice(d.id)}
                           className="text-m-red hover:underline uppercase tracking-wider text-[10px] font-bold"
