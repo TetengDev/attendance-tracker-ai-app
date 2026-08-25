@@ -50,8 +50,9 @@ const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) =>
   }
 };
 
-function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOpen: boolean; onClose: () => void; currentUrl: string; onSave: (url: string) => void }) {
+function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOpen: boolean; onClose: () => void; currentUrl: string; onSave: (url: string, pairingCode?: string) => void }) {
   const [url, setUrl] = useState(currentUrl);
+  const [pairingCode, setPairingCode] = useState("");
 
   if (!isOpen) return null;
 
@@ -66,7 +67,7 @@ function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOp
             </svg>
           </button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave(url); onClose(); }} className="p-6">
+        <form onSubmit={(e) => { e.preventDefault(); onSave(url, pairingCode.trim() || undefined); setPairingCode(""); onClose(); }} className="p-6">
           <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Backend API Server URL</label>
@@ -80,6 +81,20 @@ function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOp
               />
               <p className="text-[9px] text-muted-color mt-2 uppercase tracking-wider leading-relaxed">
                 Enter your computer's local LAN IP address and port (e.g. port 8001) to connect the physical mobile device or simulator to the backend.
+              </p>
+            </div>
+            <div className="border-t border-hairline pt-4">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Device Pairing Code (Optional)</label>
+              <input 
+                type="text" 
+                value={pairingCode}
+                onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
+                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-mono" 
+                placeholder="e.g. ABCDEFGH" 
+                maxLength={8}
+              />
+              <p className="text-[9px] text-muted-color mt-2 uppercase tracking-wider leading-relaxed">
+                If the seed token is invalid (401), generate a pairing code in the Admin Console (Devices tab), enter it here, and save to pair this client.
               </p>
             </div>
           </div>
@@ -138,7 +153,7 @@ export function App() {
   const [pinValue, setPinValue] = useState("");
   const [relaxedGating, setRelaxedGating] = useState(true);
   const [kioskSettings, setKioskSettings] = useState<Record<string, any>>({});
-  const [people, setPeople] = useState<{ id: string; display_name: string }[]>([]);
+  const [people, setPeople] = useState<{ id: string; display_name: string; kind?: string }[]>([]);
   const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
 
   // iOS Safari specific visibility tracking to restart stalled camera feeds
@@ -1431,7 +1446,7 @@ export function App() {
           isOpen={isConnModalOpen}
           onClose={() => setIsConnModalOpen(false)}
           currentUrl={apiUrl}
-          onSave={(url) => {
+          onSave={async (url, pairingCode) => {
             let formatted = url.trim();
             if (formatted && !/^https?:\/\//i.test(formatted)) {
               formatted = `http://${formatted}`;
@@ -1441,9 +1456,39 @@ export function App() {
             }
             localStorage.setItem("aegis_api_url", formatted);
             setApiUrl(formatted);
-            logMessage(`Updated API URL to ${formatted}. Reconnecting...`, "info");
+
+            if (pairingCode) {
+              logMessage(`Attempting device pairing with code: ${pairingCode}...`, "info");
+              try {
+                const pairRes = await fetch(`${formatted}/api/kiosk/pair`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ pairing_code: pairingCode }),
+                });
+                if (!pairRes.ok) {
+                  const errorData = await pairRes.json().catch(() => ({}));
+                  const detailMsg = errorData.detail?.error?.message || `HTTP ${pairRes.status}`;
+                  throw new Error(`Pairing failed: ${detailMsg}`);
+                }
+                const pairData = await pairRes.json();
+                localStorage.setItem("aegis_device_token", pairData.device_token);
+                setDeviceTokenValue(pairData.device_token);
+                logMessage("Device paired successfully! Connecting to scanner...", "info");
+              } catch (pairErr: any) {
+                logMessage(pairErr.message || "Pairing failed", "error");
+                setWsStatus("disconnected");
+                setWsError(pairErr.message || "Device pairing failed");
+                return;
+              }
+            } else {
+              logMessage(`Updated API URL to ${formatted}. Reconnecting...`, "info");
+            }
+
             if (wsRef.current) {
               wsRef.current.close();
+            } else {
+              // Trigger a token fetch/connection manually if WS isn't active
+              fetchToken();
             }
           }}
         />
