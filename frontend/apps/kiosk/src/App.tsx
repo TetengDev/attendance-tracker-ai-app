@@ -125,6 +125,9 @@ export function App() {
   const [deviceTokenValue, setDeviceTokenValue] = useState<string>(() => {
     return localStorage.getItem("aegis_device_token") || SEED_DEVICE_TOKEN;
   });
+  const [deviceId, setDeviceId] = useState<string>(() => {
+    return localStorage.getItem("aegis_device_id") || SEED_DEVICE_ID;
+  });
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   const [wsError, setWsError] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState(true);
@@ -310,6 +313,7 @@ export function App() {
   const fetchToken = async () => {
     try {
       const currentToken = localStorage.getItem("aegis_device_token") || SEED_DEVICE_TOKEN;
+      const currentDeviceId = localStorage.getItem("aegis_device_id") || SEED_DEVICE_ID;
       logMessage(`Exchanging device credentials (prefix: ${currentToken.slice(0, 6)}...) for JWT scan token...`, "info");
       setWsStatus("connecting");
       setWsError(null);
@@ -317,7 +321,7 @@ export function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device_id: SEED_DEVICE_ID,
+          device_id: currentDeviceId,
           device_token: currentToken,
         }),
       });
@@ -325,7 +329,9 @@ export function App() {
         if (res.status === 401) {
           logMessage("Device token invalid (401). Resetting cache to seed token.", "error");
           localStorage.removeItem("aegis_device_token");
+          localStorage.removeItem("aegis_device_id");
           setDeviceTokenValue(SEED_DEVICE_TOKEN);
+          setDeviceId(SEED_DEVICE_ID);
         }
         throw new Error(`Token exchange failed: HTTP ${res.status}`);
       }
@@ -1472,7 +1478,9 @@ export function App() {
                 }
                 const pairData = await pairRes.json();
                 localStorage.setItem("aegis_device_token", pairData.device_token);
+                localStorage.setItem("aegis_device_id", pairData.device_id);
                 setDeviceTokenValue(pairData.device_token);
+                setDeviceId(pairData.device_id);
                 logMessage("Device paired successfully! Connecting to scanner...", "info");
               } catch (pairErr: any) {
                 logMessage(pairErr.message || "Pairing failed", "error");
