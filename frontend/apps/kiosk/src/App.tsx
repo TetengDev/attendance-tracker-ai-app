@@ -1174,6 +1174,102 @@ export function App() {
               </button>
             )}
           </div>
+          {/* Face Enrollment Card (Visible when Registration Mode is active) */}
+          {showEnroll && (
+            <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10 animate-scale-up">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Enroll Face Profile</h2>
+                <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2.5 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Biometrics</span>
+              </div>
+              
+              <p className="text-xs text-zinc-400 mb-6 font-light">
+                Enter the name below, position your face in the camera frame, and click "Capture & Register".
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="enroll-name" className="block text-[10px] font-bold text-white uppercase tracking-wider mb-2">
+                    Person Name
+                  </label>
+                  <input
+                    id="enroll-name"
+                    type="text"
+                    placeholder="e.g. Alice Cooper"
+                    value={enrollName}
+                    onChange={(e) => setEnrollName(e.target.value)}
+                    disabled={isEnrolling}
+                    className="w-full rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium"
+                  />
+                </div>
+
+                <button
+                  onClick={enrollFace}
+                  disabled={isEnrolling || !enrollName.trim()}
+                  className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 rounded-xl disabled:bg-surface-soft disabled:text-zinc-600 disabled:shadow-none active:scale-[0.97] shadow-lg shadow-primary/20"
+                >
+                  {isEnrolling ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Registering Biometrics...
+                    </>
+                  ) : (
+                    "Capture & Register"
+                  )}
+                </button>
+
+                {enrollSuccess && (
+                  <div className="rounded-xl bg-emerald-950/20 border border-emerald-800/40 p-3 text-xs text-emerald-400 font-semibold tracking-wide">
+                    {enrollSuccess}
+                  </div>
+                )}
+
+                {enrollError && (
+                  <div className="rounded-xl bg-rose-950/20 border border-rose-800/40 p-3 text-xs text-rose-400 font-semibold tracking-wide">
+                    {enrollError}
+                  </div>
+                )}
+              </div>
+
+              {/* List of current registrations */}
+              <div className="mt-6 pt-6 border-t border-hairline space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
+                    Current Registered Profiles ({people.length})
+                  </h3>
+                  {people.length > 0 && (
+                    <button
+                      onClick={deleteAllPeople}
+                      className="text-[9px] text-rose-400 hover:text-rose-300 font-bold uppercase tracking-wider transition-colors"
+                    >
+                      Delete All
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto space-y-2 scrollbar-thin pr-1">
+                  {people.length === 0 ? (
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider py-4 text-center font-bold">No registered profiles found.</p>
+                  ) : (
+                    people.map((person) => (
+                      <div key={person.id} className="flex justify-between items-center bg-surface-soft border border-hairline rounded-xl px-3.5 py-2.5 hover:border-zinc-400 transition-all">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-bold text-white uppercase tracking-wider">{person.display_name}</span>
+                          <span className="text-[9px] text-muted-color uppercase font-mono">{person.id.slice(0, 8)}... • {person.kind}</span>
+                        </div>
+                        <button
+                          onClick={() => deletePerson(person.id, person.display_name)}
+                          className="text-[9px] text-rose-500 hover:text-rose-400 font-bold uppercase tracking-wider transition-colors animate-scale-up"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* PIN / QR Code Fallback Card */}
           <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10">
               <div className="flex flex-col gap-4">
@@ -1282,102 +1378,6 @@ export function App() {
                 </button>
               </div>
 
-              <button
-                onClick={() => {
-                  setShowEnroll(!showEnroll);
-                  setEnrollSuccess(null);
-                  setEnrollError(null);
-                }}
-                className="w-full rounded-xl border border-hairline hover:border-zinc-400 bg-surface-soft py-3 text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center gap-2 mb-4 active:scale-[0.97]"
-              >
-                {showEnroll ? "Close Enrollment" : "Enroll Face Profile"}
-              </button>
-
-              {showEnroll && (
-                <div className="space-y-4 pt-4 border-t border-hairline animate-fade-in">
-                  <div>
-                    <label htmlFor="enroll-name" className="block text-[10px] font-bold text-white uppercase tracking-wider mb-2">
-                      Person Name
-                    </label>
-                    <input
-                      id="enroll-name"
-                      type="text"
-                      placeholder="e.g. Alice Cooper"
-                      value={enrollName}
-                      onChange={(e) => setEnrollName(e.target.value)}
-                      disabled={isEnrolling}
-                      className="w-full rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
-                    />
-                  </div>
-
-                  <button
-                    onClick={enrollFace}
-                    disabled={isEnrolling || !enrollName.trim()}
-                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 rounded-xl disabled:bg-surface-soft disabled:text-zinc-600 disabled:shadow-none active:scale-[0.97]"
-                  >
-                    {isEnrolling ? (
-                      <>
-                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Registering Biometrics...
-                      </>
-                    ) : (
-                      "Capture & Register"
-                    )}
-                  </button>
-
-                  {enrollSuccess && (
-                    <div className="rounded-xl bg-emerald-950/20 border border-emerald-800/40 p-3 text-xs text-emerald-400 font-semibold tracking-wide">
-                      {enrollSuccess}
-                    </div>
-                  )}
-
-                  {enrollError && (
-                    <div className="rounded-xl bg-rose-950/20 border border-rose-800/40 p-3 text-xs text-rose-400 font-semibold tracking-wide">
-                      {enrollError}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* List of current registrations */}
-              <div className="mt-4 pt-4 border-t border-hairline space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
-                    Registered Profiles ({people.length})
-                  </h3>
-                  {people.length > 0 && (
-                    <button
-                      onClick={deleteAllPeople}
-                      className="text-[10px] text-m-red hover:text-red-400 font-bold uppercase tracking-wider transition-colors"
-                    >
-                      Delete All
-                    </button>
-                  )}
-                </div>
-                {people.length === 0 ? (
-                  <p className="text-[9px] text-muted-color uppercase tracking-wider font-light">No face profiles registered yet.</p>
-                ) : (
-                  <div className="max-h-36 overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
-                    {people.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center justify-between bg-surface-soft border border-hairline rounded-xl px-3 py-2 text-xs hover:border-zinc-400 transition-colors"
-                      >
-                        <span className="font-bold truncate text-white uppercase text-[10px] tracking-wider">{p.display_name}</span>
-                        <button
-                          onClick={() => deletePerson(p.id, p.display_name)}
-                          className="text-m-red hover:text-red-400 transition-all p-1.5 rounded-lg hover:bg-surface-elevated"
-                          title="Delete profile"
-                        >
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
             
             {/* Real-time Logs Console */}
