@@ -69,13 +69,13 @@ async def seed() -> None:
                     direction=DeviceDirection.BIDIRECTIONAL,
                     token_hash=token_hash,
                     token_display_prefix=SEED_DEVICE_PREFIX,
-                    allowed_cidrs=["127.0.0.1/32", "::1/128"],
+                    allowed_cidrs=[],
                     settings_override={},
                 )
             )
         else:
             device.token_hash = token_hash
-            device.allowed_cidrs = ["127.0.0.1/32", "::1/128"]
+            device.allowed_cidrs = []
             device.token_display_prefix = SEED_DEVICE_PREFIX
 
 
