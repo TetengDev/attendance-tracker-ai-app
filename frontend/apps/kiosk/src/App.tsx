@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { useScanLoop } from "./scan/useScanLoop";
 import { apiBaseUrl as defaultApiBaseUrl } from "@attendance/api-client";
 import { enqueueOfflineScan, getOfflineScans, removeOfflineScan, getOfflineQueueDepth } from "./utils/offlineQueue";
@@ -50,66 +51,6 @@ const playBeep = (freq = 880, type: OscillatorType = "sine", duration = 0.15) =>
   }
 };
 
-function ConnectionSettingsModal({ isOpen, onClose, currentUrl, onSave }: { isOpen: boolean; onClose: () => void; currentUrl: string; onSave: (url: string, pairingCode?: string) => void }) {
-  const [url, setUrl] = useState(currentUrl);
-  const [pairingCode, setPairingCode] = useState("");
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-surface-card rounded-2xl border border-hairline w-full max-w-md overflow-hidden animate-scale-up text-white shadow-2xl shadow-black/80">
-        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Server Connection Settings</h2>
-          <button onClick={onClose} className="text-muted-color hover:text-white transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave(url, pairingCode.trim() || undefined); setPairingCode(""); onClose(); }} className="p-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Backend API Server URL</label>
-              <input 
-                required 
-                type="text" 
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-mono" 
-                placeholder="e.g. http://192.168.1.100:8001" 
-              />
-              <p className="text-[9px] text-muted-color mt-2 uppercase tracking-wider leading-relaxed">
-                Enter your computer's local LAN IP address and port (e.g. port 8001) to connect the physical mobile device or simulator to the backend.
-              </p>
-            </div>
-            <div className="border-t border-hairline pt-4">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-color mb-1.5">Device Pairing Code (Optional)</label>
-              <input 
-                type="text" 
-                value={pairingCode}
-                onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
-                className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-mono" 
-                placeholder="e.g. ABCDEFGH" 
-                maxLength={8}
-              />
-              <p className="text-[9px] text-muted-color mt-2 uppercase tracking-wider leading-relaxed">
-                If the seed token is invalid (401), generate a pairing code in the Admin Console (Devices tab), enter it here, and save to pair this client.
-              </p>
-            </div>
-          </div>
-          <div className="mt-8 flex justify-end gap-3 border-t border-hairline pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-muted-color hover:text-white uppercase tracking-widest transition-all active:scale-[0.96]">Cancel</button>
-            <button type="submit" className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20">
-              Save & Reconnect
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -117,7 +58,6 @@ export function App() {
   const [apiUrl, setApiUrl] = useState(() => {
     return localStorage.getItem("aegis_api_url") || defaultApiBaseUrl;
   });
-  const [isConnModalOpen, setIsConnModalOpen] = useState(false);
   const apiBaseUrl = apiUrl;
   
   // App state
@@ -129,6 +69,16 @@ export function App() {
     return localStorage.getItem("aegis_device_id") || SEED_DEVICE_ID;
   });
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<'scan' | 'pin'>('scan');
+
+  useEffect(() => {
+    if (wsStatus === "connected") {
+      setActiveTab("scan");
+    } else if (wsStatus === "disconnected") {
+      setActiveTab("pin");
+    }
+  }, [wsStatus]);
   const [wsError, setWsError] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState(true);
   const [showEnroll, setShowEnroll] = useState(() => {
@@ -544,7 +494,7 @@ export function App() {
   // Initialize scan loop hook
   const { isLoadingModel, isScanRunning, resetLockout, detectedBbox, reason, metrics, cameraError, modelError } = useScanLoop({
     videoRef,
-    isScanActive: activeScan && wsStatus === "connected" && !scanResult && !showEnroll,
+    isScanActive: activeScan && wsStatus === "connected" && !scanResult && !showEnroll && activeTab === "scan",
     isAppBackgrounded: isAppBackgrounded,
     facingMode: facingMode,
     scanMode: (kioskSettings["kiosk.scan_mode"] as "continuous" | "tap_to_scan" | undefined) ?? "continuous",
@@ -861,645 +811,633 @@ export function App() {
   };
 
   return (
-    <main className="relative min-h-screen bg-canvas font-sans text-white antialiased">
-      <header className="mx-6 mt-6 bg-surface-card/60 backdrop-blur-md border border-hairline rounded-2xl px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl shadow-black/30 shrink-0">
+    <main className="relative min-h-screen bg-canvas font-sans text-white antialiased flex flex-col justify-between overflow-x-hidden">
+      {/* Header */}
+      <header className="mx-6 mt-6 bg-surface-card/60 backdrop-blur-md border border-hairline rounded-2xl px-6 py-4 flex items-center justify-between shadow-xl shadow-black/30 shrink-0 select-none">
         <div className="flex items-center gap-3">
-          <div className="flex h-1.5 w-8 rounded-full overflow-hidden select-none">
-            <div className="w-1/3 bg-m-blue-light" />
-            <div className="w-1/3 bg-m-blue-dark" />
-            <div className="w-1/3 bg-m-red" />
+          <div className="flex h-1.5 w-8 rounded-full overflow-hidden">
+            <div className="w-1/3 bg-primary" />
+            <div className="w-1/3 bg-emerald-500" />
+            <div className="w-1/3 bg-rose-500" />
           </div>
-          <span className="font-bold tracking-wider text-sm text-zinc-100 font-sans">{(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Biometrics"}</span>
+          <span className="font-bold tracking-wider text-sm text-zinc-100 uppercase">
+            {(kioskSettings["branding.org_name"] as string | undefined) || "Aegis Kiosk"}
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          {/* Offline Queue Depth Badge */}
+        
+        <div className="flex items-center gap-3.5">
+          {/* Offline Sync Indicator */}
           {queueDepth > 0 && (
-            <div className="flex items-center gap-2 rounded-full bg-amber-950/30 text-amber-400 border border-amber-800/40 px-3.5 py-1 text-xs font-semibold tracking-wide animate-pulse">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex items-center gap-1.5 rounded-full bg-amber-950/40 text-amber-400 border border-amber-800/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>{queueDepth} Offline scan{queueDepth === 1 ? "" : "s"} queued</span>
-            </div>
+              <span>{queueDepth} Pending</span>
+            </motion.div>
           )}
- 
-          {/* WS Status Indicator */}
-          <div 
-            onClick={() => {
-              if (wsStatus === "disconnected" || !!(window as any).Capacitor) {
-                setIsConnModalOpen(true);
-              }
-            }}
-            className={`flex items-center gap-2 rounded-xl bg-surface-soft px-3.5 py-1.5 text-xs font-semibold tracking-wide border border-hairline text-zinc-300 ${wsStatus === "disconnected" || !!(window as any).Capacitor ? 'cursor-pointer hover:border-zinc-400 transition-colors' : ''}`}
-            title="Click to configure connection URL"
-          >
+
+          {/* Status badge */}
+          <div className="flex items-center gap-2 rounded-xl bg-surface-soft px-3 py-1.5 border border-hairline text-[10px] uppercase font-bold tracking-wider text-zinc-400">
             {wsStatus === "connected" ? (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                <span>Connected</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+                <span>Online</span>
               </>
             ) : wsStatus === "connecting" ? (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse" />
                 <span>Connecting</span>
               </>
             ) : (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                <span>Disconnected</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+                <span>Offline</span>
               </>
             )}
           </div>
- 
-          {/* Mode Badge + Toggle */}
-          <div className="flex items-center">
-            <button
-              onClick={() => {
-                const enteringEnroll = !showEnroll;
-                setShowEnroll(enteringEnroll);
-                setEnrollSuccess(null);
-                setEnrollError(null);
-                setActiveScan(!enteringEnroll);
-              }}
-              className="rounded-xl border border-hairline bg-surface-soft text-zinc-300 hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-surface-elevated transition-all active:scale-[0.96]"
-              title={showEnroll ? "Click to switch to Scan Mode" : "Click to switch to Registration Mode"}
-            >
-              {showEnroll ? "Registration Mode" : "Scan Mode"}
-            </button>
-          </div>
 
-          {/* Camera Facing mode toggle */}
-          <button
-            onClick={() => setFacingMode(prev => prev === "user" ? "environment" : "user")}
-            className="rounded-xl border border-hairline bg-surface-soft text-zinc-300 hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-surface-elevated transition-all active:scale-[0.96]"
-            title="Toggle Front/Back Camera"
+          {/* Admin Toggle (Gear Icon) */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-2 rounded-xl border border-hairline transition-all ${
+              showSettings
+                ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
+                : "bg-surface-soft text-zinc-400 hover:text-white hover:bg-surface-elevated"
+            }`}
+            title="Admin Settings"
           >
-            Camera: {facingMode === "user" ? "Front" : "Back"}
-          </button>
-
-          {/* iOS Capacitor Mobile Admin Panel Launcher */}
-          {!!(window as any).Capacitor && (
-            <button
-              onClick={() => {
-                const serverUrl = apiBaseUrl || window.location.origin;
-                const adminUrl = serverUrl.replace(":8001", ":5174").replace("/api", "");
-                window.location.href = adminUrl;
-              }}
-              className="rounded-xl border border-m-blue-dark/50 bg-m-blue-dark/10 text-m-blue-light px-3.5 py-1.5 text-xs font-semibold tracking-wide hover:bg-m-blue-dark hover:text-white transition-all active:scale-[0.96]"
-              title="Launch Admin Console"
-            >
-              Admin Console
-            </button>
-          )}
- 
-          {wsStatus === "disconnected" && (
-            <button
-              onClick={fetchToken}
-              className="rounded-xl bg-primary hover:bg-primary/95 text-white px-4 py-1.5 text-xs font-bold tracking-wider hover:shadow-lg hover:shadow-primary/10 transition-all active:scale-[0.96]"
-            >
-              Connect Kiosk
-            </button>
-          )}
- 
-          {/* Explicit Start/Stop Scan control visible when connected */}
-          {wsStatus === 'connected' && (
-            <button
-              onClick={() => {
-                if (activeScan) {
-                  setActiveScan(false);
-                } else {
-                  setActiveScan(true);
-                  setShowEnroll(false);
-                }
-              }}
-              className="rounded-xl border border-primary text-primary hover:bg-primary hover:text-white px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all active:scale-[0.96]"
-            >
-              {activeScan ? 'Stop Scanning' : 'Start Scanning'}
-            </button>
-          )}
+            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </motion.button>
         </div>
       </header>
 
-      <section className={`mx-auto grid max-w-5xl gap-8 px-6 py-12 ${import.meta.env.DEV ? "md:grid-cols-3" : "md:grid-cols-1 justify-center max-w-2xl"}`}>
-        {/* Left Side: Scan Feed and Centering Overlays */}
-        <div className={import.meta.env.DEV ? "md:col-span-2 flex flex-col gap-4" : "flex flex-col gap-4"}>
-          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-hairline bg-black shadow-xl shadow-black/40">
-            {/* Live Camera Feed */}
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full object-cover transform scale-x-[-1]"
-            />
+      {/* Main Content Area */}
+      <section className="flex-1 flex flex-col justify-center items-center px-6 py-8 relative">
+        
+        {/* Offline Banner Indicator */}
+        {wsStatus === "disconnected" && !showSettings && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-sm bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-2xl px-4 py-3.5 text-center mb-6 font-bold uppercase tracking-wider flex items-center justify-center gap-2 animate-pulse"
+          >
+            <span className="h-1.5 w-1.5 bg-rose-500 rounded-full animate-ping" />
+            Offline Mode — Punching with PIN
+          </motion.div>
+        )}
 
-            {/* Camera/Model Error Warning Banners */}
-            {(cameraError || modelError) && (
-              <div className="absolute top-4 left-4 right-4 bg-rose-950/85 border border-rose-800/40 text-rose-300 text-[10px] uppercase font-bold tracking-wider px-4 py-3 rounded-xl z-20 shadow-lg backdrop-blur-sm flex items-center gap-3">
-                <svg className="h-4.5 w-4.5 text-rose-400 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <span>{cameraError || modelError}</span>
-              </div>
-            )}
-
-            {/* Glowing Laser Scan Bar */}
-            {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-85 shadow-[0_0_12px_rgba(99,102,241,0.8)] animate-scan-line pointer-events-none" />
-            )}
-
-            {/* Face centering guide target */}
-            {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="h-60 w-60 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center animate-[spin_40s_linear_infinite]">
-                  <div className="h-52 w-52 rounded-full border border-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.05)]" />
-                </div>
-              </div>
-            )}
-
-            {/* Flash Effect on Capture */}
-            {isMatching && (
-              <div className="absolute inset-0 bg-white pointer-events-none animate-camera-flash z-10" />
-            )}
-
-            {/* Processing Identity Overlay */}
-            {isMatching && (
-              <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center pointer-events-none z-20">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative h-16 w-16">
-                    <div className="absolute inset-0 rounded-full border-4 border-white/10" />
-                    <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-                  </div>
-                  <span className="text-white font-mono text-xs tracking-[0.2em] font-bold animate-pulse shadow-black drop-shadow-md">
-                    PROCESSING BIOMETRICS
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Enrollment Guide Overlay */}
-            {isScanRunning && showEnroll && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-black/40">
-                {/* Face Silhouette Guide */}
-                <div className="h-64 w-48 rounded-[120px] border-2 border-dashed border-primary shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center justify-center animate-[pulse_2s_infinite]">
-                  <div className="h-56 w-40 rounded-[100px] border border-primary/20" />
-                </div>
-                {/* Text guide */}
-                <div className="absolute bottom-6 bg-surface-card border border-hairline rounded-xl px-4 py-2 text-xs text-white font-bold tracking-wide shadow-lg">
-                  Position your face and click "Capture & Register"
-                </div>
-              </div>
-            )}
-
-            {/* Disconnected Overlay */}
-            {wsStatus !== "connected" && !isLoadingModel && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-md z-10 p-6 text-center">
-                <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mb-4">
-                  <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 8.464M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
-                  </svg>
-                </div>
-                <p className="text-white text-sm font-bold tracking-wider uppercase mb-1">Kiosk Offline</p>
-                <p className="text-muted-color text-xs tracking-wide font-light mb-6">Set up the API connection or click connect to begin</p>
-                <div className="flex flex-col gap-2 w-full max-w-xs z-20">
-                  <button
-                    onClick={fetchToken}
-                    className="w-full bg-primary hover:bg-primary/90 text-white py-2.5 rounded-xl uppercase tracking-widest text-[10px] font-bold transition-all shadow-lg shadow-primary/10 active:scale-[0.96]"
-                  >
-                    Connect Kiosk
-                  </button>
-                  <button
-                    onClick={() => setIsConnModalOpen(true)}
-                    className="w-full bg-surface-soft text-zinc-300 border border-hairline py-2.5 rounded-xl uppercase tracking-widest text-[10px] font-bold hover:text-white hover:border-zinc-400 transition-all active:scale-[0.96]"
-                  >
-                    Server Settings
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Scan Mode Active Indicator */}
-            {isScanRunning && wsStatus === "connected" && !scanResult && !showEnroll && (
-              <div className="absolute top-4 left-4 bg-canvas/80 border border-hairline rounded-full px-3 py-1.5 text-[10px] text-white font-bold tracking-wide z-10 flex items-center gap-1.5 shadow-lg shadow-black/80 backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
-                <span>Kiosk Scan Mode Active</span>
-              </div>
-            )}
- 
-            {/* Real-time Bounding Box Overlay */}
-            {isScanRunning && wsStatus === "connected" && !scanResult && detectedBbox && (
-              <div
-                style={{
-                  left: `${100 - detectedBbox.x - detectedBbox.w}%`,
-                  top: `${detectedBbox.y}%`,
-                  width: `${detectedBbox.w}%`,
-                  height: `${detectedBbox.h}%`,
-                }}
-                className={`absolute border-2 rounded-xl transition-all duration-75 pointer-events-none ${
-                  showEnroll 
-                    ? "border-white shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
-                    : reason 
-                    ? "border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]" 
-                    : "border-primary shadow-[0_0_8px_rgba(99,102,241,0.4)]"
-                }`}
-              >
-                <div className={`absolute -top-7 left-0 px-2.5 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-wider whitespace-nowrap shadow-md ${
-                  showEnroll 
-                    ? "bg-zinc-600" 
-                    : reason 
-                    ? "bg-amber-500" 
-                    : "bg-primary"
-                }`}>
-                  {showEnroll 
-                    ? "Enrolling..." 
-                    : reason 
-                    ? getGatingInstruction() 
-                    : "Stable - Scanning..."}
-                </div>
-              </div>
-            )}
- 
-            {/* Analyzing Overlay */}
-            {isMatching && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/80 backdrop-blur-[2px] z-10 animate-fade-in">
-                <div className="relative h-28 w-28 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-4 border-white/10 border-t-white animate-spin" />
-                  <svg className="h-10 w-10 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                </div>
-                <p className="text-white text-xs font-bold tracking-widest uppercase mt-4 animate-pulse">
-                  Analyzing Biometrics
-                </p>
-                <p className="text-muted-color text-[10px] uppercase tracking-wider mt-1">
-                  Matching face against gallery...
-                </p>
-              </div>
-            )}
- 
-            {/* Loading / Startup Overlay */}
-            {isLoadingModel && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-sm z-10">
-                <div className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                <p className="text-zinc-400 text-xs font-semibold tracking-wide">Loading Face Engine WASM Models...</p>
-              </div>
-            )}
- 
-            {/* Attendance Punch Result Notification Modal */}
-            {scanResult && scanResult.person && (
-              <div className="absolute inset-0 flex items-center justify-center bg-canvas/90 backdrop-blur-md z-20 animate-fade-in">
-                <div className="flex flex-col items-center text-center p-8 max-w-sm rounded-2xl bg-surface-card/90 border border-hairline shadow-2xl animate-scale-up backdrop-blur-md">
-                  <div className="h-20 w-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-5 animate-pulse">
-                    <svg className="h-10 w-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold tracking-wide text-white mb-2">Punch Success</h3>
-                  <p className="text-white text-base font-semibold mb-1">{scanResult.person.display_name}</p>
-                  <p className="text-zinc-400 text-[10px] font-semibold uppercase tracking-wider mb-4">
-                    {scanResult.direction === "in" ? "CHECK-IN" : "CHECK-OUT"} • {new Date(scanResult.occurred_at).toLocaleTimeString()}
-                  </p>
-                  <span className="text-[10px] text-zinc-300 bg-surface-soft border border-hairline rounded-full px-3 py-1.5 uppercase font-semibold tracking-wide">
-                    Attendance Logged
-                  </span>
-                </div>
-              </div>
-            )}
- 
-            {/* Gating Error Notification */}
-            {scanError && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-rose-950/95 border border-rose-800/40 backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-20 animate-scale-up">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
-                <span className="text-rose-200 text-xs font-semibold tracking-wide">{scanError}</span>
-              </div>
-            )}
- 
-            {/* Friendly Info Notification */}
-            {scanInfo && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-zinc-900/95 border border-hairline backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-20 animate-scale-up">
-                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shadow-[0_0_6px_rgba(255,255,255,0.6)]" />
-                <span className="text-white text-xs font-semibold tracking-wide">{scanInfo}</span>
-              </div>
-            )}
+        {/* Tab Switcher */}
+        {wsStatus === "connected" && !showSettings && (
+          <div className="relative flex bg-surface-soft border border-hairline rounded-2xl p-1 mb-8 w-full max-w-[260px] select-none shadow-lg">
+            <button
+              onClick={() => setActiveTab("scan")}
+              className="relative flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-center focus:outline-none"
+            >
+              <span className={`relative z-10 transition-colors duration-200 ${activeTab === 'scan' ? 'text-white' : 'text-zinc-500'}`}>Face Scan</span>
+              {activeTab === 'scan' && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute inset-0 bg-primary rounded-xl"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("pin")}
+              className="relative flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-center focus:outline-none"
+            >
+              <span className={`relative z-10 transition-colors duration-200 ${activeTab === 'pin' ? 'text-white' : 'text-zinc-500'}`}>Enter PIN</span>
+              {activeTab === 'pin' && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute inset-0 bg-primary rounded-xl"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+            </button>
           </div>
- 
-          {/* Real-time scanning ticker / Gating feedback */}
-          <div className="flex items-center gap-3.5 rounded-2xl border border-hairline bg-surface-soft px-5 py-3.5 text-xs text-zinc-400 font-semibold tracking-wide shadow-md">
-            <span className={`h-1.5 w-1.5 rounded-full ${wsStatus === "connected" && isScanRunning ? "bg-primary animate-pulse shadow-[0_0_6px_rgba(99,102,241,0.6)]" : "bg-hairline"}`} />
-            <span>{gatingStatus}</span>
-            {isScanRunning && wsStatus === "connected" && (
-              <button
-                onClick={resetLockout}
-                className="ml-auto text-[10px] font-semibold tracking-wide text-zinc-300 border border-hairline hover:border-zinc-400 bg-transparent px-2.5 py-1 rounded-xl transition-all active:scale-[0.96] hover:bg-surface-elevated"
-              >
-                Reset Lockout
-              </button>
-            )}
-          </div>
-          {/* Face Enrollment Card (Visible when Registration Mode is active) */}
-          {showEnroll && (
-            <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10 animate-scale-up">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Enroll Face Profile</h2>
-                <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2.5 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Biometrics</span>
-              </div>
-              
-              <p className="text-xs text-zinc-400 mb-6 font-light">
-                Enter the name below, position your face in the camera frame, and click "Capture & Register".
-              </p>
+        )}
 
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="enroll-name" className="block text-[10px] font-bold text-white uppercase tracking-wider mb-2">
-                    Person Name
-                  </label>
-                  <input
-                    id="enroll-name"
-                    type="text"
-                    placeholder="e.g. Alice Cooper"
-                    value={enrollName}
-                    onChange={(e) => setEnrollName(e.target.value)}
-                    disabled={isEnrolling}
-                    className="w-full rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium"
+        {/* Viewport for Active Tab */}
+        {!showSettings && (
+          <div className="w-full max-w-md flex flex-col items-center justify-center">
+            
+            {/* FACE SCAN VIEW */}
+            {activeTab === "scan" && wsStatus === "connected" && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center w-full"
+              >
+                <div className="relative w-72 h-72 rounded-full overflow-hidden border-4 border-hairline-strong bg-black shadow-2xl shadow-black/80 flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-full w-full object-cover transform scale-x-[-1]"
                   />
-                </div>
 
-                <button
-                  onClick={enrollFace}
-                  disabled={isEnrolling || !enrollName.trim()}
-                  className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 rounded-xl disabled:bg-surface-soft disabled:text-zinc-600 disabled:shadow-none active:scale-[0.97] shadow-lg shadow-primary/20"
-                >
-                  {isEnrolling ? (
-                    <>
-                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Registering Biometrics...
-                    </>
-                  ) : (
-                    "Capture & Register"
+                  {/* Laser Scan Line */}
+                  {isScanRunning && !scanResult && !showEnroll && (
+                    <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-85 shadow-[0_0_12px_rgba(99,102,241,0.8)] animate-scan-line pointer-events-none" />
                   )}
-                </button>
 
-                {enrollSuccess && (
-                  <div className="rounded-xl bg-emerald-950/20 border border-emerald-800/40 p-3 text-xs text-emerald-400 font-semibold tracking-wide">
-                    {enrollSuccess}
-                  </div>
-                )}
+                  {/* Target Guide Ring */}
+                  {isScanRunning && !scanResult && !showEnroll && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="h-56 w-56 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center animate-[spin_40s_linear_infinite]" />
+                    </div>
+                  )}
 
-                {enrollError && (
-                  <div className="rounded-xl bg-rose-950/20 border border-rose-800/40 p-3 text-xs text-rose-400 font-semibold tracking-wide">
-                    {enrollError}
-                  </div>
-                )}
-              </div>
+                  {/* Camera Flash */}
+                  {isMatching && (
+                    <div className="absolute inset-0 bg-white pointer-events-none animate-camera-flash z-10" />
+                  )}
 
-              {/* List of current registrations */}
-              <div className="mt-6 pt-6 border-t border-hairline space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
-                    Current Registered Profiles ({people.length})
-                  </h3>
-                  {people.length > 0 && (
-                    <button
-                      onClick={deleteAllPeople}
-                      className="text-[9px] text-rose-400 hover:text-rose-300 font-bold uppercase tracking-wider transition-colors"
+                  {/* Processing Biometrics */}
+                  {isMatching && (
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-20">
+                      <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3" />
+                      <span className="text-[10px] text-zinc-300 uppercase tracking-widest font-bold animate-pulse">
+                        Matching Biometrics...
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Loading/Startup Overlay */}
+                  {isLoadingModel && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/95 backdrop-blur-sm z-10">
+                      <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-3" />
+                      <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold">Initializing Engine...</p>
+                    </div>
+                  )}
+
+                  {/* Live Camera Warnings */}
+                  {(cameraError || modelError) && (
+                    <div className="absolute inset-x-4 top-4 bg-rose-950/90 border border-rose-800/40 text-rose-300 text-[9px] uppercase font-bold tracking-wider px-3.5 py-2.5 rounded-xl z-20 text-center">
+                      {cameraError || modelError}
+                    </div>
+                  )}
+
+                  {/* Gating Bounding Box Overlay */}
+                  {isScanRunning && !scanResult && detectedBbox && (
+                    <div
+                      style={{
+                        left: `${100 - detectedBbox.x - detectedBbox.w}%`,
+                        top: `${detectedBbox.y}%`,
+                        width: `${detectedBbox.w}%`,
+                        height: `${detectedBbox.h}%`,
+                      }}
+                      className={`absolute border-2 rounded-xl transition-all duration-75 pointer-events-none ${
+                        reason ? "border-amber-500" : "border-primary"
+                      }`}
                     >
-                      Delete All
-                    </button>
-                  )}
-                </div>
-                
-                <div className="max-h-48 overflow-y-auto space-y-2 scrollbar-thin pr-1">
-                  {people.length === 0 ? (
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider py-4 text-center font-bold">No registered profiles found.</p>
-                  ) : (
-                    people.map((person) => (
-                      <div key={person.id} className="flex justify-between items-center bg-surface-soft border border-hairline rounded-xl px-3.5 py-2.5 hover:border-zinc-400 transition-all">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-xs font-bold text-white uppercase tracking-wider">{person.display_name}</span>
-                          <span className="text-[9px] text-muted-color uppercase font-mono">{person.id.slice(0, 8)}... • {person.kind}</span>
-                        </div>
-                        <button
-                          onClick={() => deletePerson(person.id, person.display_name)}
-                          className="text-[9px] text-rose-500 hover:text-rose-400 font-bold uppercase tracking-wider transition-colors animate-scale-up"
-                        >
-                          Delete
-                        </button>
+                      <div className={`absolute -top-6 left-0 px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase tracking-wider whitespace-nowrap shadow-md ${
+                        reason ? "bg-amber-500" : "bg-primary"
+                      }`}>
+                        {reason ? getGatingInstruction() : "Scanning..."}
                       </div>
-                    ))
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* PIN / QR Code Fallback Card */}
-          <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-white">PIN / QR Code Fallback</h2>
-                  <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2.5 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Accessibility</span>
+                {/* Instructions text */}
+                <div className="text-center mt-6 select-none animate-pulse">
+                  <h2 className="text-base font-bold text-white uppercase tracking-wider">Ready to Scan</h2>
+                  <p className="text-zinc-500 text-xs mt-1 font-light">Look at the camera to check in</p>
                 </div>
-                
-                <p className="text-xs text-zinc-400 font-light">
-                  Type your ID/PIN or position your QR code in front of the camera (simulated via text input).
-                </p>
- 
-                {/* Input with inline submit */}
-                <form onSubmit={handlePinSubmit} className="flex gap-2">
+              </motion.div>
+            )}
+
+            {/* PIN KEYPAD VIEW */}
+            {activeTab === "pin" && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full flex flex-col items-center"
+              >
+                {/* Input box */}
+                <form onSubmit={handlePinSubmit} className="w-full max-w-xs mb-5 flex gap-2">
                   <input
-                    type="text"
-                    placeholder="Enter your PIN or Scan QR Code..."
+                    type="password"
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    placeholder="Enter your PIN..."
                     value={pinValue}
-                    onChange={(e) => setPinValue(e.target.value)}
+                    onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ""))}
                     disabled={isMatching}
-                    className="flex-1 rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    className="flex-1 rounded-xl bg-surface-soft border border-hairline px-4 py-3 text-center text-lg font-bold tracking-widest text-white placeholder-zinc-700 focus:outline-none focus:border-primary transition-all shadow-inner font-mono"
                   />
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     type="submit"
                     disabled={isMatching || !pinValue.trim()}
-                    className="bg-primary hover:bg-primary/90 text-white font-bold px-5 py-2.5 rounded-xl transition-all text-xs uppercase tracking-widest disabled:bg-surface-soft disabled:text-zinc-600 disabled:border-none disabled:shadow-none active:scale-[0.96]"
+                    className="bg-primary hover:bg-primary/95 text-white font-bold px-6 py-3 rounded-xl transition-all text-xs uppercase tracking-widest disabled:bg-surface-soft disabled:text-zinc-700 active:scale-[0.96] shadow-lg shadow-primary/10"
                   >
-                    Check In
-                  </button>
+                    Enter
+                  </motion.button>
                 </form>
- 
-                {/* Tactile Touchscreen Keypad */}
-                <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto w-full pt-2">
+
+                {/* Grid Pad */}
+                <div className="grid grid-cols-3 gap-2.5 max-w-xs w-full">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 15 }}
                       key={num}
                       type="button"
                       onClick={() => handleKeypadPress(num.toString())}
                       disabled={isMatching}
-                      className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
+                      className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-bold py-4 rounded-2xl border border-hairline transition-all text-base select-none shadow-md"
                     >
                       {num}
-                    </button>
+                    </motion.button>
                   ))}
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
                     type="button"
                     onClick={handleKeypadClear}
                     disabled={isMatching}
-                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-rose-500 font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-rose-500 font-bold py-4 rounded-2xl border border-hairline transition-all text-[11px] uppercase tracking-wider select-none shadow-md"
                   >
                     Clear
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
                     type="button"
                     onClick={() => handleKeypadPress("0")}
                     disabled={isMatching}
-                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-bold py-4 rounded-2xl border border-hairline transition-all text-base select-none shadow-md"
                   >
                     0
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
                     type="button"
                     onClick={handleKeypadBackspace}
                     disabled={isMatching}
-                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-white font-semibold py-3.5 rounded-xl border border-hairline transition-all text-sm flex items-center justify-center select-none"
+                    className="bg-surface-soft hover:bg-surface-elevated active:scale-95 text-zinc-400 font-bold py-4 rounded-2xl border border-hairline transition-all flex items-center justify-center select-none shadow-md"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0010.828 5H20a2 2 0 012 2v10a2 2 0 01-2 2h-9.172a2 2 0 01-1.414-.586L3 12z" />
                     </svg>
-                  </button>
+                  </motion.button>
                 </div>
-              </div>
-            </div>
-          </div>
-
-        {/* Right Side: Setup instructions and Dev Tools */}
-        {import.meta.env.DEV && (
-          <div className="flex flex-col gap-6">
-            <div className="rounded-2xl border border-hairline bg-surface-card p-6 shadow-xl shadow-black/10">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Local Dev Tools</h2>
-                <span className="text-[9px] bg-surface-soft text-zinc-400 border border-hairline px-2 py-0.5 rounded-full uppercase font-mono tracking-wider font-bold">Ready</span>
-              </div>
-              
-              <p className="text-xs text-zinc-400 mb-6 font-light">
-                Use this shortcut to easily seed new profiles directly via your webcam, enabling local matching scans.
-              </p>
- 
-              {/* Relax scan criteria toggle */}
-              <div className="flex items-center justify-between bg-surface-soft border border-hairline rounded-2xl px-4 py-3 mb-4 select-none">
-                <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Relax Scan Criteria</span>
-                  <span className="text-[9px] text-muted-color uppercase tracking-wider mt-0.5 font-light">Bypasses strict distance/lighting gates</span>
-                </div>
-                <button
-                  onClick={() => setRelaxedGating(!relaxedGating)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                    relaxedGating ? "bg-primary" : "bg-zinc-700"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
-                      relaxedGating ? "translate-x-4.5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-
-            </div>
-            
-            {/* Real-time Logs Console */}
-            <div className="rounded-2xl border border-hairline bg-surface-card p-6 flex flex-col h-80 shadow-xl shadow-black/10">
-              <div className="flex justify-between items-center mb-3 border-b border-hairline pb-2">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Live Connection Logs</h2>
-                <button
-                  onClick={() => setLogs([])}
-                  className="text-[10px] text-zinc-400 hover:text-white bg-surface-soft px-3 py-1 rounded-xl border border-hairline transition-all uppercase tracking-wider font-bold active:scale-95"
-                >
-                  Clear Logs
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto font-mono text-[9px] text-zinc-400 space-y-1.5 p-3 rounded-xl bg-surface-soft border border-hairline select-text scrollbar-thin">
-                {logs.length === 0 ? (
-                  <p className="text-muted-color italic uppercase text-center py-4">No logs recorded yet.</p>
-                ) : (
-                  logs.map((log, idx) => (
-                    <div
-                      key={idx}
-                      className={
-                        log.includes("ERROR:") || log.includes("failed") || log.includes("closed")
-                          ? "text-red-400 font-bold uppercase tracking-wider"
-                          : log.includes("success") || log.includes("Success") || log.includes("opened")
-                          ? "text-emerald-400 font-bold uppercase tracking-wider"
-                          : "text-body-strong font-light"
-                      }
-                    >
-                      {log}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
- 
-            {/* Quickstart Reference Box */}
-            <div className="rounded-2xl border border-hairline bg-surface-card p-6 space-y-4 shadow-xl shadow-black/10">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-white border-b border-hairline pb-2">Step-by-step Test</h3>
-              <ol className="list-decimal list-inside space-y-2.5 text-xs text-body-color font-light">
-                <li>Click <span className="text-white font-bold uppercase tracking-wider">Connect Kiosk</span> to connect the WebSocket to the local backend.</li>
-                <li>Click <span className="text-white font-bold uppercase tracking-wider">Enroll Face Profile</span>, enter your name, and click <span className="text-white font-bold uppercase tracking-wider">Capture & Register</span>.</li>
-                <li>Wait for the green success confirmation card (it will auto-close in 3s).</li>
-                <li>In <strong className="font-bold text-white uppercase tracking-wider">Scan Mode</strong> (when enrollment is closed), look directly at the webcam inside the scanning circle.</li>
-                <li>The app will automatically match your face and display a green <strong className="font-bold text-white uppercase tracking-wider">"Punch Success"</strong> card!</li>
-              </ol>
-            </div>
+              </motion.div>
+            )}
           </div>
         )}
+
+        {/* ADMIN SETTINGS PANEL OVERLAY */}
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 30 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute inset-0 bg-canvas z-40 flex flex-col p-6 overflow-y-auto"
+            >
+              <div className="max-w-2xl w-full mx-auto space-y-6 pb-12">
+                <div className="flex justify-between items-center border-b border-hairline pb-4 mb-2">
+                  <div>
+                    <h2 className="text-base font-bold text-white uppercase tracking-wider">Admin Control Panel</h2>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Configure kiosk preferences, pairing and profiles</p>
+                  </div>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="bg-surface-soft hover:bg-surface-elevated text-zinc-300 px-4 py-2 border border-hairline rounded-xl text-[10px] uppercase font-bold tracking-widest transition-all active:scale-[0.96]"
+                  >
+                    Done
+                  </button>
+                </div>
+
+                {/* Server connection setup */}
+                <div className="bg-surface-card rounded-2xl border border-hairline p-5 space-y-4 shadow-xl">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">1. Kiosk Connection Settings</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const target = e.currentTarget;
+                      const urlVal = (target.elements.namedItem("settings_url") as HTMLInputElement).value;
+                      const codeVal = (target.elements.namedItem("settings_code") as HTMLInputElement).value;
+
+                      let formatted = urlVal.trim();
+                      if (formatted && !/^https?:\/\//i.test(formatted)) {
+                        formatted = `http://${formatted}`;
+                      }
+                      if (formatted.endsWith("/")) {
+                        formatted = formatted.slice(0, -1);
+                      }
+                      localStorage.setItem("aegis_api_url", formatted);
+                      setApiUrl(formatted);
+
+                      if (codeVal.trim()) {
+                        logMessage(`Attempting device pairing with code: ${codeVal.trim()}...`, "info");
+                        try {
+                          const pairRes = await fetch(`${formatted}/api/kiosk/pair`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ pairing_code: codeVal.trim() }),
+                          });
+                          if (!pairRes.ok) {
+                            const errorData = await pairRes.json().catch(() => ({}));
+                            const detailMsg = errorData.detail?.error?.message || `HTTP ${pairRes.status}`;
+                            throw new Error(`Pairing failed: ${detailMsg}`);
+                          }
+                          const pairData = await pairRes.json();
+                          localStorage.setItem("aegis_device_token", pairData.device_token);
+                          localStorage.setItem("aegis_device_id", pairData.device_id);
+                          setDeviceTokenValue(pairData.device_token);
+                          setDeviceId(pairData.device_id);
+                          logMessage("Device paired successfully! Connecting to scanner...", "info");
+                        } catch (pairErr: any) {
+                          logMessage(pairErr.message || "Pairing failed", "error");
+                          setWsStatus("disconnected");
+                          setWsError(pairErr.message || "Device pairing failed");
+                          return;
+                        }
+                      } else {
+                        logMessage(`Updated API URL to ${formatted}. Reconnecting...`, "info");
+                      }
+
+                      if (wsRef.current) {
+                        wsRef.current.close();
+                      } else {
+                        fetchToken();
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">Server API URL</label>
+                        <input
+                          name="settings_url"
+                          defaultValue={apiUrl}
+                          required
+                          type="text"
+                          className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary transition-all font-mono"
+                          placeholder="e.g. http://192.168.254.105:8001"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">Device Pairing Code (Optional)</label>
+                        <input
+                          name="settings_code"
+                          type="text"
+                          maxLength={8}
+                          className="w-full rounded-xl bg-surface-soft border border-hairline text-xs py-2.5 px-3.5 outline-none text-white focus:border-primary transition-all font-mono uppercase"
+                          placeholder="e.g. TZAX5Q8Z"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-[0.96] shadow-lg shadow-primary/20"
+                    >
+                      Save & Reconnect
+                    </button>
+                  </form>
+                </div>
+
+                {/* Camera configuration */}
+                <div className="bg-surface-card rounded-2xl border border-hairline p-5 space-y-4 shadow-xl">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">2. Camera & Gating Settings</h3>
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <button
+                      onClick={() => setFacingMode(prev => prev === "user" ? "environment" : "user")}
+                      className="flex-1 bg-surface-soft hover:bg-surface-elevated text-white border border-hairline py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-[0.96] text-center"
+                    >
+                      Switch Camera: {facingMode === "user" ? "Front (Selfie)" : "Back (Room)"}
+                    </button>
+                    <button
+                      onClick={() => setRelaxedGating(!relaxedGating)}
+                      className={`flex-1 border py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-[0.96] text-center ${
+                        relaxedGating
+                          ? "bg-amber-950/20 border-amber-800/40 text-amber-400"
+                          : "bg-surface-soft border-hairline text-zinc-400"
+                      }`}
+                    >
+                      Relax Scan Criteria: {relaxedGating ? "ENABLED" : "DISABLED"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Face Registration (Enrollment) */}
+                <div className="bg-surface-card rounded-2xl border border-hairline p-5 space-y-5 shadow-xl">
+                  <div className="flex justify-between items-center border-b border-hairline pb-3">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">3. Biometrics Enrollment</h3>
+                    <button
+                      onClick={() => {
+                        const mode = !showEnroll;
+                        setShowEnroll(mode);
+                        setActiveScan(!mode);
+                      }}
+                      className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                        showEnroll
+                          ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-400"
+                          : "bg-surface-soft border-hairline text-zinc-400"
+                      }`}
+                    >
+                      {showEnroll ? "Registration Active" : "Activate Registration"}
+                    </button>
+                  </div>
+
+                  {showEnroll ? (
+                    <div className="space-y-4 animate-scale-up">
+                      <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-hairline bg-black">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="h-full w-full object-cover transform scale-x-[-1]"
+                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40">
+                          <div className="h-56 w-44 rounded-[100px] border-2 border-dashed border-primary animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Employee Full Name..."
+                          value={enrollName}
+                          onChange={(e) => setEnrollName(e.target.value)}
+                          disabled={isEnrolling}
+                          className="flex-1 rounded-xl bg-surface-soft border border-hairline px-4 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-primary transition-all font-semibold"
+                        />
+                        <button
+                          onClick={enrollFace}
+                          disabled={isEnrolling || !enrollName.trim()}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs uppercase tracking-widest transition-all disabled:bg-surface-soft disabled:text-zinc-600 active:scale-[0.96]"
+                        >
+                          {isEnrolling ? "Saving..." : "Enroll Face"}
+                        </button>
+                      </div>
+                      {enrollSuccess && <p className="text-xs text-emerald-400 font-semibold">{enrollSuccess}</p>}
+                      {enrollError && <p className="text-xs text-rose-400 font-semibold">{enrollError}</p>}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-500 italic">Toggle "Activate Registration" to enroll employees' faces via this camera.</p>
+                  )}
+
+                  {/* Profile manager */}
+                  <div className="border-t border-hairline pt-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-[10px] font-bold text-white uppercase tracking-wider">Registered Profiles ({people.length})</h4>
+                      {people.length > 0 && (
+                        <button
+                          onClick={deleteAllPeople}
+                          className="text-[9px] text-rose-500 hover:text-rose-400 uppercase font-bold tracking-wider"
+                        >
+                          Delete All
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto space-y-2 scrollbar-thin">
+                      {people.length === 0 ? (
+                        <p className="text-[9px] text-zinc-600 uppercase tracking-widest text-center py-2">No registered profiles.</p>
+                      ) : (
+                        people.map(p => (
+                          <div key={p.id} className="flex justify-between items-center bg-surface-soft border border-hairline rounded-xl px-3.5 py-2">
+                            <span className="text-xs font-semibold text-white">{p.display_name}</span>
+                            <button
+                              onClick={() => deletePerson(p.id, p.display_name)}
+                              className="text-[9px] text-rose-500 hover:text-rose-400 uppercase font-bold"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dev Logs */}
+                <div className="bg-surface-card rounded-2xl border border-hairline p-5 space-y-4 shadow-xl">
+                  <div className="flex justify-between items-center border-b border-hairline pb-2">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">4. Live Logs Console</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={resetLockout}
+                        className="text-[9px] bg-surface-soft border border-hairline hover:border-zinc-400 text-zinc-300 px-3 py-1 rounded-xl uppercase font-bold"
+                      >
+                        Reset Lockout
+                      </button>
+                      <button
+                        onClick={() => setLogs([])}
+                        className="text-[9px] bg-surface-soft border border-hairline hover:border-zinc-400 text-zinc-300 px-3 py-1 rounded-xl uppercase font-bold"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="h-48 overflow-y-auto font-mono text-[9px] text-zinc-500 bg-surface-soft border border-hairline rounded-xl p-3 scrollbar-thin select-text">
+                    {logs.length === 0 ? (
+                      <p className="italic text-center py-4">Console empty.</p>
+                    ) : (
+                      logs.map((log, idx) => (
+                        <div
+                          key={idx}
+                          className={
+                            log.includes("ERROR:") || log.includes("failed") || log.includes("401")
+                              ? "text-rose-400"
+                              : log.includes("success") || log.includes("paired")
+                              ? "text-emerald-400"
+                              : "text-zinc-400"
+                          }
+                        >
+                          {log}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
-      <ConnectionSettingsModal
-          isOpen={isConnModalOpen}
-          onClose={() => setIsConnModalOpen(false)}
-          currentUrl={apiUrl}
-          onSave={async (url, pairingCode) => {
-            let formatted = url.trim();
-            if (formatted && !/^https?:\/\//i.test(formatted)) {
-              formatted = `http://${formatted}`;
-            }
-            if (formatted.endsWith("/")) {
-              formatted = formatted.slice(0, -1);
-            }
-            localStorage.setItem("aegis_api_url", formatted);
-            setApiUrl(formatted);
 
-            if (pairingCode) {
-              logMessage(`Attempting device pairing with code: ${pairingCode}...`, "info");
-              try {
-                const pairRes = await fetch(`${formatted}/api/kiosk/pair`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ pairing_code: pairingCode }),
-                });
-                if (!pairRes.ok) {
-                  const errorData = await pairRes.json().catch(() => ({}));
-                  const detailMsg = errorData.detail?.error?.message || `HTTP ${pairRes.status}`;
-                  throw new Error(`Pairing failed: ${detailMsg}`);
-                }
-                const pairData = await pairRes.json();
-                localStorage.setItem("aegis_device_token", pairData.device_token);
-                localStorage.setItem("aegis_device_id", pairData.device_id);
-                setDeviceTokenValue(pairData.device_token);
-                setDeviceId(pairData.device_id);
-                logMessage("Device paired successfully! Connecting to scanner...", "info");
-              } catch (pairErr: any) {
-                logMessage(pairErr.message || "Pairing failed", "error");
-                setWsStatus("disconnected");
-                setWsError(pairErr.message || "Device pairing failed");
-                return;
-              }
-            } else {
-              logMessage(`Updated API URL to ${formatted}. Reconnecting...`, "info");
-            }
+      {/* Success / Error / Info Notifications overlays */}
+      <AnimatePresence>
+        {scanResult && scanResult.person && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 20, stiffness: 200 }}
+              className="flex flex-col items-center text-center p-8 max-w-sm w-full rounded-3xl bg-surface-card border border-emerald-500/20 shadow-2xl"
+            >
+              <div className="h-20 w-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-5 animate-pulse">
+                <svg className="h-10 w-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold tracking-wide text-white mb-2 uppercase">Punch Success</h3>
+              <p className="text-white text-lg font-bold mb-1">{scanResult.person.display_name}</p>
+              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-4">
+                {scanResult.direction === "in" ? "CHECK-IN" : "CHECK-OUT"} • {new Date(scanResult.occurred_at).toLocaleTimeString()}
+              </p>
+              <span className="text-[10px] text-zinc-300 bg-surface-soft border border-hairline rounded-full px-4 py-2 uppercase font-bold tracking-wider">
+                Attendance Logged
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            if (wsRef.current) {
-              wsRef.current.close();
-            } else {
-              // Trigger a token fetch/connection manually if WS isn't active
-              fetchToken();
-            }
-          }}
-        />
-      </main>
+      <AnimatePresence>
+        {scanError && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.9 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3.5 bg-rose-950/95 border border-rose-800/40 backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-50"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
+            <span className="text-rose-200 text-xs font-bold uppercase tracking-wider">{scanError}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {scanInfo && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.9 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3.5 bg-zinc-900/95 border border-hairline backdrop-blur-md rounded-full px-5 py-3 shadow-2xl z-50"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shadow-[0_0_6px_rgba(255,255,255,0.6)]" />
+            <span className="text-white text-xs font-bold uppercase tracking-wider">{scanInfo}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Footer */}
+      <footer className="py-6 text-center select-none text-[10px] text-zinc-600 uppercase tracking-widest font-semibold shrink-0">
+        &copy; {new Date().getFullYear()} Aegis Biometrics. All rights reserved.
+      </footer>
+    </main>
   );
 }
