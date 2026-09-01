@@ -56,7 +56,11 @@ export function App() {
   
   // Dynamic API configuration
   const [apiUrl, setApiUrl] = useState(() => {
-    return localStorage.getItem("aegis_api_url") || defaultApiBaseUrl;
+    const saved = localStorage.getItem("aegis_api_url");
+    if (saved && !saved.includes(":8000")) {
+      return saved;
+    }
+    return defaultApiBaseUrl;
   });
   const apiBaseUrl = apiUrl;
   

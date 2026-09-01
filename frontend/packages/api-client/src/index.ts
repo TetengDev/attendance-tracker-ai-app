@@ -1,4 +1,8 @@
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ??
+  (typeof window !== "undefined"
+    ? `http://${window.location.hostname || "127.0.0.1"}:8001`
+    : "http://127.0.0.1:8001");
 
 export interface ApiClientOptions {
   baseUrl?: string;
